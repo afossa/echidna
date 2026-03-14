@@ -49,8 +49,9 @@ pub fn grad_checkpointed<F: Float + BtapeThreadLocal>(
 
     // Compute optimal checkpoint positions using Revolve schedule.
     // Note: the position set is O(num_steps) while checkpoint *states* are O(num_checkpoints).
-    let checkpoint_positions: HashSet<usize> =
-        revolve_schedule(num_steps, num_checkpoints).into_iter().collect();
+    let checkpoint_positions: HashSet<usize> = revolve_schedule(num_steps, num_checkpoints)
+        .into_iter()
+        .collect();
 
     // -- Forward pass: run all steps, saving checkpoints --
     let mut checkpoints: Vec<(usize, Vec<F>)> = Vec::with_capacity(num_checkpoints + 1);
@@ -372,8 +373,9 @@ pub fn grad_checkpointed_disk<F: Float + BtapeThreadLocal>(
     let num_checkpoints = num_checkpoints.max(1).min(num_steps);
 
     // Compute optimal checkpoint positions using Revolve schedule.
-    let checkpoint_positions: HashSet<usize> =
-        revolve_schedule(num_steps, num_checkpoints).into_iter().collect();
+    let checkpoint_positions: HashSet<usize> = revolve_schedule(num_steps, num_checkpoints)
+        .into_iter()
+        .collect();
 
     // Drop guard ensures cleanup even on panic.
     let mut guard = DiskCheckpointGuard { files: Vec::new() };

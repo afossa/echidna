@@ -384,7 +384,7 @@ fn powi_exp_decode<T: Float>(b: T) -> i32 {
 
 /// Decode a `powi` exponent directly from the raw `u32` in `arg_indices[1]`.
 ///
-/// Avoids the float round-trip of [`powi_exp_decode`], which silently fails
+/// Avoids the float round-trip of `powi_exp_decode`, which silently fails
 /// for f32 when the u32 encoding exceeds 2^24 (any negative exponent).
 #[inline]
 #[must_use]

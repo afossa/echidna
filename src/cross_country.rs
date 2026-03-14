@@ -102,10 +102,7 @@ impl<F: Float> LinearizedGraph<F> {
                     }
 
                     // Edge from second argument (binary ops only)
-                    if b_idx != UNUSED
-                        && opcodes[b_idx as usize] != OpCode::Const
-                        && db != zero
-                    {
+                    if b_idx != UNUSED && opcodes[b_idx as usize] != OpCode::Const && db != zero {
                         preds[i].push((b_idx, db));
                         succs[b_idx as usize].push((i as u32, db));
                     }

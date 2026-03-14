@@ -315,8 +315,7 @@ impl<F: Float + TapeThreadLocal> Rem for Reverse<F> {
     fn rem(self, rhs: Self) -> Self {
         let value = self.value % rhs.value;
         let q = (self.value / rhs.value).trunc();
-        let index =
-            tape::with_active_tape(|t| t.push_binary(self.index, F::one(), rhs.index, -q));
+        let index = tape::with_active_tape(|t| t.push_binary(self.index, F::one(), rhs.index, -q));
         Reverse { value, index }
     }
 }
