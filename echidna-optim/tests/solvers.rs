@@ -651,3 +651,254 @@ fn tape_objective_counts_evals() {
     let _ = lbfgs(&mut obj, &x0, &LbfgsConfig::default());
     assert!(obj.func_evals() > 0, "should have counted evaluations");
 }
+
+// ============================================================
+// Edge cases: near-singular, highly ill-conditioned, saddle
+// ============================================================
+
+/// f(x,y) = x^4 + y^2. Hessian at origin has zero eigenvalue in x.
+struct NearSingularHessian;
+
+impl Objective<f64> for NearSingularHessian {
+    fn dim(&self) -> usize {
+        2
+    }
+
+    fn eval_grad(&mut self, x: &[f64]) -> (f64, Vec<f64>) {
+        let f = x[0].powi(4) + x[1] * x[1];
+        let g = vec![4.0 * x[0].powi(3), 2.0 * x[1]];
+        (f, g)
+    }
+
+    fn eval_hessian(&mut self, x: &[f64]) -> (f64, Vec<f64>, Vec<Vec<f64>>) {
+        let (f, g) = self.eval_grad(x);
+        let h = vec![vec![12.0 * x[0] * x[0], 0.0], vec![0.0, 2.0]];
+        (f, g, h)
+    }
+
+    fn hvp(&mut self, x: &[f64], v: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let g = vec![4.0 * x[0].powi(3), 2.0 * x[1]];
+        let hv = vec![12.0 * x[0] * x[0] * v[0], 2.0 * v[1]];
+        (g, hv)
+    }
+}
+
+/// f(x,y) = 0.5*(1e6*x^2 + y^2). Highly ill-conditioned (1e6:1 ratio).
+struct HighlyIllConditioned;
+
+impl Objective<f64> for HighlyIllConditioned {
+    fn dim(&self) -> usize {
+        2
+    }
+
+    fn eval_grad(&mut self, x: &[f64]) -> (f64, Vec<f64>) {
+        let f = 0.5 * (1e6 * x[0] * x[0] + x[1] * x[1]);
+        let g = vec![1e6 * x[0], x[1]];
+        (f, g)
+    }
+
+    fn eval_hessian(&mut self, x: &[f64]) -> (f64, Vec<f64>, Vec<Vec<f64>>) {
+        let (f, g) = self.eval_grad(x);
+        let h = vec![vec![1e6, 0.0], vec![0.0, 1.0]];
+        (f, g, h)
+    }
+
+    fn hvp(&mut self, x: &[f64], v: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let g = vec![1e6 * x[0], x[1]];
+        let hv = vec![1e6 * v[0], v[1]];
+        (g, hv)
+    }
+}
+
+/// f(x,y) = x^2 - y^2 + y^4. Saddle at origin, minima at y = ±1/√2.
+struct SaddleNearby;
+
+impl Objective<f64> for SaddleNearby {
+    fn dim(&self) -> usize {
+        2
+    }
+
+    fn eval_grad(&mut self, x: &[f64]) -> (f64, Vec<f64>) {
+        let f = x[0] * x[0] - x[1] * x[1] + x[1].powi(4);
+        let g = vec![2.0 * x[0], -2.0 * x[1] + 4.0 * x[1].powi(3)];
+        (f, g)
+    }
+
+    fn eval_hessian(&mut self, x: &[f64]) -> (f64, Vec<f64>, Vec<Vec<f64>>) {
+        let (f, g) = self.eval_grad(x);
+        let h = vec![vec![2.0, 0.0], vec![0.0, -2.0 + 12.0 * x[1] * x[1]]];
+        (f, g, h)
+    }
+
+    fn hvp(&mut self, x: &[f64], v: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let g = vec![2.0 * x[0], -2.0 * x[1] + 4.0 * x[1].powi(3)];
+        let hv = vec![2.0 * v[0], (-2.0 + 12.0 * x[1] * x[1]) * v[1]];
+        (g, hv)
+    }
+}
+
+#[test]
+fn newton_near_singular_hessian() {
+    let mut obj = NearSingularHessian;
+    let config = NewtonConfig {
+        convergence: ConvergenceParams {
+            max_iter: 100,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let result = newton(&mut obj, &[1.0, 1.0], &config);
+
+    // Should converge to origin despite singular Hessian there
+    assert!(
+        matches!(
+            result.termination,
+            TerminationReason::GradientNorm | TerminationReason::StepSize
+        ),
+        "Newton near-singular: terminated with {:?}",
+        result.termination
+    );
+    assert!(result.x[0].abs() < 1e-2, "x[0] = {}", result.x[0]);
+    assert!(result.x[1].abs() < 1e-6, "x[1] = {}", result.x[1]);
+}
+
+#[test]
+fn lbfgs_near_singular_hessian() {
+    let mut obj = NearSingularHessian;
+    let config = LbfgsConfig {
+        convergence: ConvergenceParams {
+            max_iter: 200,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let result = lbfgs(&mut obj, &[1.0, 1.0], &config);
+
+    assert!(
+        matches!(
+            result.termination,
+            TerminationReason::GradientNorm | TerminationReason::StepSize
+        ),
+        "L-BFGS near-singular: terminated with {:?}",
+        result.termination
+    );
+    assert!(result.x[0].abs() < 1e-2, "x[0] = {}", result.x[0]);
+    assert!(result.x[1].abs() < 1e-6, "x[1] = {}", result.x[1]);
+}
+
+#[test]
+fn newton_highly_ill_conditioned() {
+    let mut obj = HighlyIllConditioned;
+    let config = NewtonConfig::default();
+    let result = newton(&mut obj, &[1.0, 1.0], &config);
+
+    // Newton with exact Hessian handles even extreme conditioning
+    assert_eq!(result.termination, TerminationReason::GradientNorm);
+    assert_eq!(result.iterations, 1);
+    assert_near_origin(&result, 1e-8);
+}
+
+#[test]
+fn lbfgs_highly_ill_conditioned() {
+    let mut obj = HighlyIllConditioned;
+    let config = LbfgsConfig {
+        convergence: ConvergenceParams {
+            max_iter: 500,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let result = lbfgs(&mut obj, &[1.0, 1.0], &config);
+
+    assert_eq!(
+        result.termination,
+        TerminationReason::GradientNorm,
+        "L-BFGS 1e6:1 ill-conditioned: terminated with {:?}",
+        result.termination
+    );
+    assert_near_origin(&result, 1e-3);
+}
+
+#[test]
+fn trust_region_highly_ill_conditioned() {
+    let mut obj = HighlyIllConditioned;
+    let config = TrustRegionConfig {
+        convergence: ConvergenceParams {
+            max_iter: 500,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let result = trust_region(&mut obj, &[1.0, 1.0], &config);
+
+    assert_eq!(
+        result.termination,
+        TerminationReason::GradientNorm,
+        "Trust-region 1e6:1 ill-conditioned: terminated with {:?}",
+        result.termination
+    );
+    assert_near_origin(&result, 1e-3);
+}
+
+#[test]
+fn newton_avoids_saddle() {
+    // Start near the saddle at origin but offset in y. Newton should converge
+    // to a local minimum at (0, ±1/√2), not the saddle.
+    let mut obj = SaddleNearby;
+    let config = NewtonConfig {
+        convergence: ConvergenceParams {
+            max_iter: 100,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let result = newton(&mut obj, &[0.1, 0.5], &config);
+
+    assert!(
+        matches!(
+            result.termination,
+            TerminationReason::GradientNorm | TerminationReason::StepSize
+        ),
+        "Newton saddle: terminated with {:?}",
+        result.termination
+    );
+    // Should be at x=0, |y| ≈ 1/√2 ≈ 0.7071
+    assert!(result.x[0].abs() < 1e-4, "x[0] = {}", result.x[0]);
+    let y_expected = 1.0 / 2.0_f64.sqrt();
+    assert!(
+        (result.x[1].abs() - y_expected).abs() < 1e-4,
+        "|y| = {}, expected {}",
+        result.x[1].abs(),
+        y_expected
+    );
+}
+
+#[test]
+fn trust_region_avoids_saddle() {
+    let mut obj = SaddleNearby;
+    let config = TrustRegionConfig {
+        convergence: ConvergenceParams {
+            max_iter: 200,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let result = trust_region(&mut obj, &[0.1, 0.5], &config);
+
+    assert!(
+        matches!(
+            result.termination,
+            TerminationReason::GradientNorm | TerminationReason::StepSize
+        ),
+        "Trust-region saddle: terminated with {:?}",
+        result.termination
+    );
+    assert!(result.x[0].abs() < 1e-4, "x[0] = {}", result.x[0]);
+    let y_expected = 1.0 / 2.0_f64.sqrt();
+    assert!(
+        (result.x[1].abs() - y_expected).abs() < 1e-4,
+        "|y| = {}, expected {}",
+        result.x[1].abs(),
+        y_expected
+    );
+}

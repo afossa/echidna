@@ -197,6 +197,66 @@ fn sparse_hessian_with_pattern_precomputed() {
 }
 
 #[test]
+fn sparse_jacobian_auto_selects_reverse() {
+    // 5 inputs -> 2 outputs, both outputs depend on all inputs.
+    // Column coloring is expensive (all columns share both rows),
+    // row coloring is cheap (only 2 rows) -> auto-selection picks reverse.
+    fn wide_input_map<T: Scalar>(x: &[T]) -> Vec<T> {
+        vec![
+            x[0] + x[1] + x[2] + x[3] + x[4],
+            x[0] * x[1] * x[2] * x[3] * x[4],
+        ]
+    }
+
+    let x = [1.0_f64, 2.0, 0.5, 1.5, 3.0];
+    let (mut tape, _) = record_multi(|v| wide_input_map(v), &x);
+
+    // Verify the coloring structure actually favors reverse mode.
+    tape.forward(&x);
+    let pattern = tape.detect_jacobian_sparsity();
+    let (_, num_col_colors) = echidna::sparse::column_coloring(&pattern);
+    let (_, num_row_colors) = echidna::sparse::row_coloring(&pattern);
+    assert!(
+        num_row_colors < num_col_colors,
+        "test precondition: need row_colors ({}) < col_colors ({}) to force reverse",
+        num_row_colors,
+        num_col_colors
+    );
+
+    // Auto-selection should pick reverse mode for this wide-input function.
+    let (_, pat_auto, jac_auto) = tape.sparse_jacobian(&x);
+
+    // Explicit reverse should give the same result.
+    let (_, pat_rev, jac_rev) = tape.sparse_jacobian_reverse(&x);
+
+    assert_eq!(pat_auto.nnz(), pat_rev.nnz());
+    for k in 0..jac_auto.len() {
+        assert!(
+            (jac_auto[k] - jac_rev[k]).abs() < 1e-10,
+            "auto vs reverse mismatch at k={}: auto={}, rev={}",
+            k,
+            jac_auto[k],
+            jac_rev[k]
+        );
+    }
+
+    // Also verify against dense Jacobian for correctness.
+    let dense_jac = tape.jacobian(&x);
+    for (k, (&row, &col)) in pat_auto.rows.iter().zip(pat_auto.cols.iter()).enumerate() {
+        let r = row as usize;
+        let c = col as usize;
+        assert!(
+            (jac_auto[k] - dense_jac[r][c]).abs() < 1e-10,
+            "auto vs dense mismatch at ({}, {}): auto={}, dense={}",
+            r,
+            c,
+            jac_auto[k],
+            dense_jac[r][c]
+        );
+    }
+}
+
+#[test]
 fn api_sparse_jacobian() {
     let x = vec![1.0_f64, 2.0, 3.0];
     let (vals, pattern, jac_vals) = echidna::sparse_jacobian(|v| nonlinear_map(v), &x);

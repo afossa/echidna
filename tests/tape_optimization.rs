@@ -4,7 +4,7 @@
 #![cfg(feature = "bytecode")]
 
 use approx::assert_relative_eq;
-use echidna::{record, record_multi, BReverse};
+use echidna::{record, record_multi, BReverse, Scalar};
 use num_traits::Float;
 
 // ── Constant folding ──
@@ -638,6 +638,109 @@ fn algebraic_rosenbrock() {
             let fm = tape.output_value();
             let fd = (fp - fm) / (2.0 * h);
             assert_relative_eq!(g[i], fd, max_relative = 1e-5, epsilon = 1e-10);
+        }
+    }
+}
+
+// ── CSE edge cases ──
+
+#[test]
+fn cse_deep_chains() {
+    // Multi-level CSE: a=x*y, b=x*y (CSE), c=a+z, d=b+z (should also CSE).
+    let (mut tape, val) = record(
+        |x| {
+            let a = x[0] * x[1];
+            let b = x[0] * x[1]; // same as a
+            let c = a + x[2];
+            let d = b + x[2]; // same as c after first CSE pass
+            c + d
+        },
+        &[2.0_f64, 3.0, 1.0],
+    );
+
+    assert_relative_eq!(val, 14.0, max_relative = 1e-12); // 2*(2*3 + 1) = 14
+    let ops_before = tape.num_ops();
+
+    tape.cse();
+    let ops_after = tape.num_ops();
+
+    assert!(
+        ops_after < ops_before,
+        "deep CSE should reduce tape: before={}, after={}",
+        ops_before,
+        ops_after
+    );
+
+    // Gradient: f = 2*(x*y + z)
+    // df/dx = 2*y = 6, df/dy = 2*x = 4, df/dz = 2
+    let g = tape.gradient(&[2.0, 3.0, 1.0]);
+    assert_relative_eq!(g[0], 6.0, max_relative = 1e-12);
+    assert_relative_eq!(g[1], 4.0, max_relative = 1e-12);
+    assert_relative_eq!(g[2], 2.0, max_relative = 1e-12);
+}
+
+#[test]
+fn cse_powi_dedup_and_distinct() {
+    // x.powi(3) computed twice should be deduplicated.
+    // x.powi(2) vs x.powi(3) should NOT be merged.
+    let (mut tape, val) = record(
+        |x| {
+            let a = x[0].powi(3);
+            let b = x[0].powi(3); // same as a — should be deduped
+            let c = x[0].powi(2); // different exponent — must NOT merge
+            a + b + c
+        },
+        &[2.0_f64],
+    );
+
+    // 2^3 + 2^3 + 2^2 = 8 + 8 + 4 = 20
+    assert_relative_eq!(val, 20.0, max_relative = 1e-12);
+    let ops_before = tape.num_ops();
+
+    tape.cse();
+    let ops_after = tape.num_ops();
+
+    assert!(
+        ops_after < ops_before,
+        "CSE should dedup identical powi: before={}, after={}",
+        ops_before,
+        ops_after
+    );
+
+    // f(x) = 2*x^3 + x^2, f'(x) = 6*x^2 + 2*x = 6*4 + 4 = 28
+    let g = tape.gradient(&[2.0]);
+    assert_relative_eq!(g[0], 28.0, max_relative = 1e-12);
+}
+
+#[test]
+fn cse_preserves_multi_output() {
+    // Multi-output function with shared subexpressions: CSE must preserve
+    // correctness for all outputs.
+    fn shared_sub<T: Scalar>(x: &[T]) -> Vec<T> {
+        let common = x[0] * x[1]; // shared
+        let common2 = x[0] * x[1]; // duplicate of common
+        vec![common + x[2], common2 * x[2]]
+    }
+
+    let x = [2.0_f64, 3.0, 4.0];
+    let (mut tape, values) = record_multi(|v| shared_sub(v), &x);
+
+    assert_relative_eq!(values[0], 10.0, max_relative = 1e-12); // 2*3 + 4
+    assert_relative_eq!(values[1], 24.0, max_relative = 1e-12); // 2*3 * 4
+
+    let jac_before = tape.jacobian(&x);
+
+    tape.cse();
+
+    let jac_after = tape.jacobian(&x);
+    for i in 0..2 {
+        for j in 0..3 {
+            assert_relative_eq!(
+                jac_before[i][j],
+                jac_after[i][j],
+                max_relative = 1e-12,
+                epsilon = 1e-14
+            );
         }
     }
 }
