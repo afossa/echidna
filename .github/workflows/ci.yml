@@ -117,6 +117,30 @@ jobs:
       - name: Test (stde)
         run: cargo test --features stde
 
+      - name: Build (bytecode,taylor)
+        run: cargo build --features bytecode,taylor
+
+      - name: Test (bytecode,taylor)
+        run: cargo test --features bytecode,taylor
+
+      - name: Build (bytecode,stde)
+        run: cargo build --features bytecode,stde
+
+      - name: Test (bytecode,stde)
+        run: cargo test --features bytecode,stde
+
+      - name: Build (taylor,stde)
+        run: cargo build --features taylor,stde
+
+      - name: Test (taylor,stde)
+        run: cargo test --features taylor,stde
+
+      - name: Build (bytecode,taylor,stde)
+        run: cargo build --features bytecode,taylor,stde
+
+      - name: Test (bytecode,taylor,stde)
+        run: cargo test --features bytecode,taylor,stde
+
   coverage:
     name: Coverage
     runs-on: blacksmith-2vcpu-ubuntu-2404
