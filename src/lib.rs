@@ -1,4 +1,5 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(missing_docs)]
 //! # echidna
 //!
 //! A high-performance automatic differentiation (AD) library for Rust.

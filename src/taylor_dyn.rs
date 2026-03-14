@@ -91,6 +91,7 @@ thread_local! {
 ///
 /// Mirrors `TapeThreadLocal` from `tape.rs`.
 pub trait TaylorArenaLocal: Float {
+    /// Returns the thread-local cell holding a pointer to the active arena.
     fn cell() -> &'static std::thread::LocalKey<Cell<*mut TaylorArena<Self>>>;
 }
 
@@ -345,16 +346,19 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
 
     // ── Elemental methods ──
 
+    /// Reciprocal (1/x).
     #[inline]
     pub fn recip(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_recip(a, c))
     }
 
+    /// Square root.
     #[inline]
     pub fn sqrt(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_sqrt(a, c))
     }
 
+    /// Cube root.
     #[inline]
     pub fn cbrt(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -365,6 +369,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Integer power.
     #[inline]
     pub fn powi(self, n: i32) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -375,6 +380,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Floating-point power.
     #[inline]
     pub fn powf(self, n: Self) -> Self {
         let b = n.get_coeffs_vec();
@@ -386,11 +392,13 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Natural exponential (e^x).
     #[inline]
     pub fn exp(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_exp(a, c))
     }
 
+    /// Base-2 exponential (2^x).
     #[inline]
     pub fn exp2(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -400,26 +408,31 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// e^x - 1, accurate near zero.
     #[inline]
     pub fn exp_m1(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_exp_m1(a, c))
     }
 
+    /// Natural logarithm.
     #[inline]
     pub fn ln(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_ln(a, c))
     }
 
+    /// Base-2 logarithm.
     #[inline]
     pub fn log2(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_log2(a, c))
     }
 
+    /// Base-10 logarithm.
     #[inline]
     pub fn log10(self) -> Self {
         Self::unary_op(&self, |a, c| taylor_ops::taylor_log10(a, c))
     }
 
+    /// ln(1+x), accurate near zero.
     #[inline]
     pub fn ln_1p(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -429,11 +442,13 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Logarithm with given base.
     #[inline]
     pub fn log(self, base: Self) -> Self {
         self.ln() / base.ln()
     }
 
+    /// Sine.
     #[inline]
     pub fn sin(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -443,6 +458,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Cosine.
     #[inline]
     pub fn cos(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -452,6 +468,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Simultaneous sine and cosine.
     #[inline]
     pub fn sin_cos(self) -> (Self, Self) {
         let a = self.get_coeffs_vec();
@@ -477,6 +494,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Tangent.
     #[inline]
     pub fn tan(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -486,6 +504,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Arcsine.
     #[inline]
     pub fn asin(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -496,6 +515,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Arccosine.
     #[inline]
     pub fn acos(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -506,6 +526,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Arctangent.
     #[inline]
     pub fn atan(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -516,6 +537,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Two-argument arctangent.
     #[inline]
     pub fn atan2(self, other: Self) -> Self {
         let b = other.get_coeffs_vec();
@@ -528,6 +550,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Hyperbolic sine.
     #[inline]
     pub fn sinh(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -537,6 +560,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Hyperbolic cosine.
     #[inline]
     pub fn cosh(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -546,6 +570,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Hyperbolic tangent.
     #[inline]
     pub fn tanh(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -555,6 +580,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Inverse hyperbolic sine.
     #[inline]
     pub fn asinh(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -565,6 +591,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Inverse hyperbolic cosine.
     #[inline]
     pub fn acosh(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -575,6 +602,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Inverse hyperbolic tangent.
     #[inline]
     pub fn atanh(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -585,6 +613,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Absolute value.
     #[inline]
     pub fn abs(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -595,31 +624,37 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Sign function (zero derivative).
     #[inline]
     pub fn signum(self) -> Self {
         TaylorDyn::constant(self.value.signum())
     }
 
+    /// Floor (zero derivative).
     #[inline]
     pub fn floor(self) -> Self {
         TaylorDyn::constant(self.value.floor())
     }
 
+    /// Ceiling (zero derivative).
     #[inline]
     pub fn ceil(self) -> Self {
         TaylorDyn::constant(self.value.ceil())
     }
 
+    /// Round to nearest integer (zero derivative).
     #[inline]
     pub fn round(self) -> Self {
         TaylorDyn::constant(self.value.round())
     }
 
+    /// Truncate toward zero (zero derivative).
     #[inline]
     pub fn trunc(self) -> Self {
         TaylorDyn::constant(self.value.trunc())
     }
 
+    /// Fractional part.
     #[inline]
     pub fn fract(self) -> Self {
         Self::unary_op(&self, |a, c| {
@@ -628,6 +663,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Euclidean distance: sqrt(self^2 + other^2).
     #[inline]
     pub fn hypot(self, other: Self) -> Self {
         Self::binary_op(&self, &other, |a, b, c| {
@@ -638,6 +674,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         })
     }
 
+    /// Maximum of two values.
     #[inline]
     pub fn max(self, other: Self) -> Self {
         if self.value >= other.value {
@@ -647,6 +684,7 @@ impl<F: Float + TaylorArenaLocal> TaylorDyn<F> {
         }
     }
 
+    /// Minimum of two values.
     #[inline]
     pub fn min(self, other: Self) -> Self {
         if self.value <= other.value {

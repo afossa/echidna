@@ -70,6 +70,7 @@ pub fn tape_gradient_nalgebra<F: Float>(tape: &mut BytecodeTape<F>, x: &DVector<
 }
 
 /// Evaluate Hessian on a pre-recorded tape, accepting and returning nalgebra types.
+#[must_use]
 pub fn tape_hessian_nalgebra<F: Float>(
     tape: &BytecodeTape<F>,
     x: &DVector<F>,

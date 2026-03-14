@@ -83,18 +83,16 @@ Valuable features that were deferred until concrete use cases arose. **Complete*
 
 ---
 
-## Phase 5: Aspirational
+## Phase 5: Code Hygiene ✅
 
-Nice-to-haves with no urgency. Pursue opportunistically or if the relevant area is being actively modified.
+Documentation, lint compliance, and code organization improvements. **Complete**.
 
-| # | Item | Effort | Impact |
-|---|------|--------|--------|
-| 5.1 | Decompose `stde.rs` (1409 lines) into sub-modules | medium | medium |
-| 5.2 | Add `#![warn(missing_docs)]` and fill gaps | large | medium |
-| 5.3 | Bulk-add `#[must_use]` to pure functions (~267 sites) | medium | low |
-| 5.4 | Audit `usize` to `u32` casts in GPU paths | small | medium |
-
-**Caution**: 5.1 risks breaking delicate Taylor jet propagation logic — only pursue if `stde.rs` continues to grow. 5.2 is large (all public items need docs) — consider enabling per-module incrementally.
+| # | Item | Status |
+|---|------|--------|
+| 5.1 | Decompose `tests/stde.rs` (1630 lines) into 5 focused test files | ✅ Done |
+| 5.2 | Enable `#![warn(missing_docs)]` and fill all gaps | ✅ Done |
+| 5.3 | Bulk-add `#[must_use]` to pure functions (19 sites) | ✅ Done |
+| 5.4 | Audit `usize` → `u32` casts in GPU paths (SAFETY comments + debug_assert) | ✅ Done |
 
 ---
 
@@ -132,6 +130,5 @@ These items were evaluated and explicitly rejected. Rationale is in [docs/adr-de
 ## Dependencies Between Phases
 
 ```
-Phase 0–4  (complete)        — all done as of 2026-03-14
-Phase 5  (aspirational)       — independent nice-to-haves
+Phase 0–5  (complete)        — all done as of 2026-03-14
 ```

@@ -109,6 +109,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
 
     /// The zero Laurent value.
     #[inline]
+    #[must_use]
     pub fn zero() -> Self {
         Laurent {
             coeffs: [F::zero(); K],
@@ -118,6 +119,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
 
     /// The one Laurent value.
     #[inline]
+    #[must_use]
     pub fn one() -> Self {
         Self::constant(F::one())
     }
@@ -256,8 +258,9 @@ impl<F: Float, const K: usize> Laurent<F, K> {
     }
 
     // ── Elemental methods ──
-    // Three-case pattern: pole → NaN/special, zero-at-origin → taylor via as_taylor_coeffs, regular → taylor on coeffs.
+    // Three-case pattern: pole -> NaN/special, zero-at-origin -> taylor via as_taylor_coeffs, regular -> taylor on coeffs.
 
+    /// Reciprocal (1/x).
     #[inline]
     pub fn recip(self) -> Self {
         if self.is_all_zero() {
@@ -273,6 +276,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         l
     }
 
+    /// Square root.
     #[inline]
     pub fn sqrt(self) -> Self {
         if self.is_all_zero() {
@@ -310,6 +314,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Cube root.
     #[inline]
     pub fn cbrt(self) -> Self {
         if self.is_all_zero() {
@@ -353,6 +358,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Integer power.
     #[inline]
     pub fn powi(self, n: i32) -> Self {
         if self.is_all_zero() {
@@ -374,6 +380,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         l
     }
 
+    /// Floating-point power.
     #[inline]
     pub fn powf(self, n: Self) -> Self {
         // a^b = exp(b * ln(a))
@@ -404,11 +411,13 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         l
     }
 
+    /// Natural exponential (e^x).
     #[inline]
     pub fn exp(self) -> Self {
         self.apply_regular(|a, c| taylor_ops::taylor_exp(a, c))
     }
 
+    /// Base-2 exponential (2^x).
     #[inline]
     pub fn exp2(self) -> Self {
         self.apply_regular(|a, c| {
@@ -417,11 +426,13 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// e^x - 1, accurate near zero.
     #[inline]
     pub fn exp_m1(self) -> Self {
         self.apply_regular(|a, c| taylor_ops::taylor_exp_m1(a, c))
     }
 
+    /// Natural logarithm.
     #[inline]
     pub fn ln(self) -> Self {
         if self.is_all_zero() {
@@ -442,16 +453,19 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Base-2 logarithm.
     #[inline]
     pub fn log2(self) -> Self {
         self.apply_regular(|a, c| taylor_ops::taylor_log2(a, c))
     }
 
+    /// Base-10 logarithm.
     #[inline]
     pub fn log10(self) -> Self {
         self.apply_regular(|a, c| taylor_ops::taylor_log10(a, c))
     }
 
+    /// ln(1+x), accurate near zero.
     #[inline]
     pub fn ln_1p(self) -> Self {
         self.apply_regular(|a, c| {
@@ -460,11 +474,13 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Logarithm with given base.
     #[inline]
     pub fn log(self, base: Self) -> Self {
         self.ln() / base.ln()
     }
 
+    /// Sine.
     #[inline]
     pub fn sin(self) -> Self {
         self.apply_regular(|a, c| {
@@ -473,6 +489,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Cosine.
     #[inline]
     pub fn cos(self) -> Self {
         self.apply_regular(|a, c| {
@@ -481,6 +498,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Simultaneous sine and cosine.
     #[inline]
     pub fn sin_cos(self) -> (Self, Self) {
         if self.pole_order < 0 {
@@ -507,6 +525,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         (ls, lc)
     }
 
+    /// Tangent.
     #[inline]
     pub fn tan(self) -> Self {
         self.apply_regular(|a, c| {
@@ -515,6 +534,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Arcsine.
     #[inline]
     pub fn asin(self) -> Self {
         self.apply_regular(|a, c| {
@@ -524,6 +544,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Arccosine.
     #[inline]
     pub fn acos(self) -> Self {
         self.apply_regular(|a, c| {
@@ -533,6 +554,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Arctangent.
     #[inline]
     pub fn atan(self) -> Self {
         self.apply_regular(|a, c| {
@@ -542,6 +564,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Two-argument arctangent.
     #[inline]
     pub fn atan2(self, other: Self) -> Self {
         // atan2 only works with regular values
@@ -566,6 +589,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Hyperbolic sine.
     #[inline]
     pub fn sinh(self) -> Self {
         self.apply_regular(|a, c| {
@@ -574,6 +598,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Hyperbolic cosine.
     #[inline]
     pub fn cosh(self) -> Self {
         self.apply_regular(|a, c| {
@@ -582,6 +607,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Hyperbolic tangent.
     #[inline]
     pub fn tanh(self) -> Self {
         self.apply_regular(|a, c| {
@@ -590,6 +616,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Inverse hyperbolic sine.
     #[inline]
     pub fn asinh(self) -> Self {
         self.apply_regular(|a, c| {
@@ -599,6 +626,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Inverse hyperbolic cosine.
     #[inline]
     pub fn acosh(self) -> Self {
         self.apply_regular(|a, c| {
@@ -608,6 +636,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Inverse hyperbolic tangent.
     #[inline]
     pub fn atanh(self) -> Self {
         self.apply_regular(|a, c| {
@@ -617,6 +646,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         })
     }
 
+    /// Absolute value.
     #[inline]
     pub fn abs(self) -> Self {
         if self.is_all_zero() {
@@ -633,31 +663,37 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Sign function (zero derivative).
     #[inline]
     pub fn signum(self) -> Self {
         Self::constant(self.value().signum())
     }
 
+    /// Floor (zero derivative).
     #[inline]
     pub fn floor(self) -> Self {
         Self::constant(self.value().floor())
     }
 
+    /// Ceiling (zero derivative).
     #[inline]
     pub fn ceil(self) -> Self {
         Self::constant(self.value().ceil())
     }
 
+    /// Round to nearest integer (zero derivative).
     #[inline]
     pub fn round(self) -> Self {
         Self::constant(self.value().round())
     }
 
+    /// Truncate toward zero (zero derivative).
     #[inline]
     pub fn trunc(self) -> Self {
         Self::constant(self.value().trunc())
     }
 
+    /// Fractional part.
     #[inline]
     pub fn fract(self) -> Self {
         if self.pole_order != 0 {
@@ -671,16 +707,19 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Fused multiply-add: self * a + b.
     #[inline]
     pub fn mul_add(self, a: Self, b: Self) -> Self {
         self * a + b
     }
 
+    /// Euclidean distance: sqrt(self^2 + other^2).
     #[inline]
     pub fn hypot(self, other: Self) -> Self {
         (self * self + other * other).sqrt()
     }
 
+    /// Maximum of two values.
     #[inline]
     pub fn max(self, other: Self) -> Self {
         if self.value() >= other.value() {
@@ -690,6 +729,7 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
     }
 
+    /// Minimum of two values.
     #[inline]
     pub fn min(self, other: Self) -> Self {
         if self.value() <= other.value() {

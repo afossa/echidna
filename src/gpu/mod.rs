@@ -264,6 +264,8 @@ impl GpuTapeData {
             // SAFETY(u32 cast): n is the number of tape opcodes. Exceeding u32::MAX (~4.3B)
             // would require ~17 GB of opcode storage alone, which is impractical.
             num_ops: n as u32,
+            // SAFETY(u32 cast): num_inputs, num_variables, and output_index are bounded
+            // by tape size (same order as num_ops), which cannot practically reach u32::MAX.
             num_inputs: tape.num_inputs() as u32,
             num_variables: tape.num_variables_count() as u32,
             output_index: tape.output_index() as u32,
@@ -304,11 +306,17 @@ impl GpuTapeData {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct TapeMeta {
+    /// Number of opcodes in the tape.
     pub num_ops: u32,
+    /// Number of input variables.
     pub num_inputs: u32,
+    /// Number of intermediate variables (working slots).
     pub num_variables: u32,
+    /// Number of outputs.
     pub num_outputs: u32,
+    /// Number of evaluation points in the batch.
     pub batch_size: u32,
+    /// Padding to 32-byte alignment.
     pub _pad: [u32; 3],
 }
 
@@ -316,6 +324,7 @@ pub struct TapeMeta {
 ///
 /// The mapping matches the `OpCode` discriminant (`#[repr(u8)]`), cast to u32.
 #[inline]
+#[must_use]
 pub fn opcode_to_gpu(op: OpCode) -> u32 {
     op as u32
 }

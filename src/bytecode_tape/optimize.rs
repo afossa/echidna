@@ -99,6 +99,7 @@ impl<F: Float> super::BytecodeTape<F> {
         remap
     }
 
+    /// Remove unreachable nodes from the tape.
     pub fn dead_code_elimination(&mut self) {
         let mut seeds = vec![self.output_index];
         seeds.extend_from_slice(&self.output_indices);

@@ -299,6 +299,7 @@ pub fn dense_stde_2nd<F: Float>(
 /// Panics if `z_vectors` is empty, `c_matrix` is not square with dimension
 /// matching `tape.num_inputs()`, or any z-vector has the wrong length.
 #[cfg(feature = "nalgebra")]
+#[must_use]
 pub fn dense_stde_2nd_indefinite(
     tape: &BytecodeTape<f64>,
     x: &[f64],

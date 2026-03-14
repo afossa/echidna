@@ -39,6 +39,7 @@ pub struct WgpuContext {
 
 impl WgpuContext {
     /// Acquire a GPU device. Returns `None` if no suitable adapter is found.
+    #[must_use]
     pub fn new() -> Option<Self> {
         pollster::block_on(Self::new_async())
     }
@@ -372,6 +373,7 @@ impl WgpuContext {
             )));
         }
 
+        // SAFETY(u32 cast): order is validated above to be in 1..=5.
         let k = order as u32;
         let ni = tape.num_inputs;
         let nv = tape.num_variables;

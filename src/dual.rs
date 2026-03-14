@@ -62,12 +62,14 @@ impl<F: Float> Dual<F> {
 
     // ── Powers ──
 
+    /// Reciprocal (1/x).
     #[inline]
     pub fn recip(self) -> Self {
         let inv = F::one() / self.re;
         self.chain(inv, -inv * inv)
     }
 
+    /// Square root.
     #[inline]
     pub fn sqrt(self) -> Self {
         let s = self.re.sqrt();
@@ -75,6 +77,7 @@ impl<F: Float> Dual<F> {
         self.chain(s, F::one() / (two * s))
     }
 
+    /// Cube root.
     #[inline]
     pub fn cbrt(self) -> Self {
         let c = self.re.cbrt();
@@ -82,6 +85,7 @@ impl<F: Float> Dual<F> {
         self.chain(c, F::one() / (three * c * c))
     }
 
+    /// Integer power.
     #[inline]
     pub fn powi(self, n: i32) -> Self {
         let val = self.re.powi(n);
@@ -89,6 +93,7 @@ impl<F: Float> Dual<F> {
         self.chain(val, deriv)
     }
 
+    /// Floating-point power.
     #[inline]
     pub fn powf(self, n: Self) -> Self {
         // d/dx (x^y) = y * x^(y-1) * dx + x^y * ln(x) * dy
@@ -101,43 +106,51 @@ impl<F: Float> Dual<F> {
 
     // ── Exp/Log ──
 
+    /// Natural exponential (e^x).
     #[inline]
     pub fn exp(self) -> Self {
         let e = self.re.exp();
         self.chain(e, e)
     }
 
+    /// Base-2 exponential (2^x).
     #[inline]
     pub fn exp2(self) -> Self {
         let e = self.re.exp2();
         self.chain(e, e * F::LN_2())
     }
 
+    /// e^x - 1, accurate near zero.
     #[inline]
     pub fn exp_m1(self) -> Self {
         self.chain(self.re.exp_m1(), self.re.exp())
     }
 
+    /// Natural logarithm.
     #[inline]
     pub fn ln(self) -> Self {
         self.chain(self.re.ln(), F::one() / self.re)
     }
 
+    /// Base-2 logarithm.
     #[inline]
     pub fn log2(self) -> Self {
         self.chain(self.re.log2(), F::one() / (self.re * F::LN_2()))
     }
 
+    /// Base-10 logarithm.
     #[inline]
     pub fn log10(self) -> Self {
         self.chain(self.re.log10(), F::one() / (self.re * F::LN_10()))
     }
 
+    /// ln(1+x), accurate near zero.
     #[inline]
     pub fn ln_1p(self) -> Self {
         self.chain(self.re.ln_1p(), F::one() / (F::one() + self.re))
     }
 
+    /// Logarithm with given base.
     #[inline]
     pub fn log(self, base: Self) -> Self {
         self.ln() / base.ln()
@@ -145,22 +158,26 @@ impl<F: Float> Dual<F> {
 
     // ── Trig ──
 
+    /// Sine.
     #[inline]
     pub fn sin(self) -> Self {
         self.chain(self.re.sin(), self.re.cos())
     }
 
+    /// Cosine.
     #[inline]
     pub fn cos(self) -> Self {
         self.chain(self.re.cos(), -self.re.sin())
     }
 
+    /// Tangent.
     #[inline]
     pub fn tan(self) -> Self {
         let c = self.re.cos();
         self.chain(self.re.tan(), F::one() / (c * c))
     }
 
+    /// Simultaneous sine and cosine.
     #[inline]
     pub fn sin_cos(self) -> (Self, Self) {
         let (s, c) = self.re.sin_cos();
@@ -176,6 +193,7 @@ impl<F: Float> Dual<F> {
         )
     }
 
+    /// Arcsine.
     #[inline]
     pub fn asin(self) -> Self {
         self.chain(
@@ -184,6 +202,7 @@ impl<F: Float> Dual<F> {
         )
     }
 
+    /// Arccosine.
     #[inline]
     pub fn acos(self) -> Self {
         self.chain(
@@ -192,11 +211,13 @@ impl<F: Float> Dual<F> {
         )
     }
 
+    /// Arctangent.
     #[inline]
     pub fn atan(self) -> Self {
         self.chain(self.re.atan(), F::one() / (F::one() + self.re * self.re))
     }
 
+    /// Two-argument arctangent.
     #[inline]
     pub fn atan2(self, other: Self) -> Self {
         // d/dx atan2(y,x) = x/(x²+y²) dy - y/(x²+y²) dx
@@ -209,22 +230,26 @@ impl<F: Float> Dual<F> {
 
     // ── Hyperbolic ──
 
+    /// Hyperbolic sine.
     #[inline]
     pub fn sinh(self) -> Self {
         self.chain(self.re.sinh(), self.re.cosh())
     }
 
+    /// Hyperbolic cosine.
     #[inline]
     pub fn cosh(self) -> Self {
         self.chain(self.re.cosh(), self.re.sinh())
     }
 
+    /// Hyperbolic tangent.
     #[inline]
     pub fn tanh(self) -> Self {
         let c = self.re.cosh();
         self.chain(self.re.tanh(), F::one() / (c * c))
     }
 
+    /// Inverse hyperbolic sine.
     #[inline]
     pub fn asinh(self) -> Self {
         self.chain(
@@ -233,6 +258,7 @@ impl<F: Float> Dual<F> {
         )
     }
 
+    /// Inverse hyperbolic cosine.
     #[inline]
     pub fn acosh(self) -> Self {
         self.chain(
@@ -241,6 +267,7 @@ impl<F: Float> Dual<F> {
         )
     }
 
+    /// Inverse hyperbolic tangent.
     #[inline]
     pub fn atanh(self) -> Self {
         self.chain(self.re.atanh(), F::one() / (F::one() - self.re * self.re))
@@ -248,11 +275,13 @@ impl<F: Float> Dual<F> {
 
     // ── Misc ──
 
+    /// Absolute value.
     #[inline]
     pub fn abs(self) -> Self {
         self.chain(self.re.abs(), self.re.signum())
     }
 
+    /// Sign function (zero derivative).
     #[inline]
     pub fn signum(self) -> Self {
         Dual {
@@ -261,6 +290,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Floor (zero derivative).
     #[inline]
     pub fn floor(self) -> Self {
         Dual {
@@ -269,6 +299,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Ceiling (zero derivative).
     #[inline]
     pub fn ceil(self) -> Self {
         Dual {
@@ -277,6 +308,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Round to nearest integer (zero derivative).
     #[inline]
     pub fn round(self) -> Self {
         Dual {
@@ -285,6 +317,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Truncate toward zero (zero derivative).
     #[inline]
     pub fn trunc(self) -> Self {
         Dual {
@@ -293,6 +326,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Fractional part.
     #[inline]
     pub fn fract(self) -> Self {
         Dual {
@@ -301,6 +335,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Fused multiply-add: self * a + b.
     #[inline]
     pub fn mul_add(self, a: Self, b: Self) -> Self {
         // d(x*a + b) = a*dx + x*da + db
@@ -310,6 +345,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Euclidean distance: sqrt(self^2 + other^2).
     #[inline]
     pub fn hypot(self, other: Self) -> Self {
         let h = self.re.hypot(other.re);
@@ -323,6 +359,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Maximum of two values.
     #[inline]
     pub fn max(self, other: Self) -> Self {
         if self.re >= other.re {
@@ -332,6 +369,7 @@ impl<F: Float> Dual<F> {
         }
     }
 
+    /// Minimum of two values.
     #[inline]
     pub fn min(self, other: Self) -> Self {
         if self.re <= other.re {
