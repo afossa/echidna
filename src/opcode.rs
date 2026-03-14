@@ -24,51 +24,85 @@ pub enum OpCode {
     Const,
 
     // ── Binary arithmetic ──
+    /// Addition.
     Add,
+    /// Subtraction.
     Sub,
+    /// Multiplication.
     Mul,
+    /// Division.
     Div,
+    /// Remainder.
     Rem,
+    /// Floating-point power.
     Powf,
+    /// Two-argument arctangent.
     Atan2,
+    /// Euclidean distance.
     Hypot,
+    /// Maximum of two values.
     Max,
+    /// Minimum of two values.
     Min,
 
     // ── Unary ──
+    /// Negation.
     Neg,
+    /// Reciprocal (1/x).
     Recip,
+    /// Square root.
     Sqrt,
+    /// Cube root.
     Cbrt,
     /// Integer power. Exponent stored in `arg_indices[1]` as `exp as u32`.
     Powi,
 
     // ── Exp / Log ──
+    /// Natural exponential (e^x).
     Exp,
+    /// Base-2 exponential (2^x).
     Exp2,
+    /// e^x - 1, accurate near zero.
     ExpM1,
+    /// Natural logarithm.
     Ln,
+    /// Base-2 logarithm.
     Log2,
+    /// Base-10 logarithm.
     Log10,
+    /// ln(1+x), accurate near zero.
     Ln1p,
 
     // ── Trig ──
+    /// Sine.
     Sin,
+    /// Cosine.
     Cos,
+    /// Tangent.
     Tan,
+    /// Arcsine.
     Asin,
+    /// Arccosine.
     Acos,
+    /// Arctangent.
     Atan,
 
     // ── Hyperbolic ──
+    /// Hyperbolic sine.
     Sinh,
+    /// Hyperbolic cosine.
     Cosh,
+    /// Hyperbolic tangent.
     Tanh,
+    /// Inverse hyperbolic sine.
     Asinh,
+    /// Inverse hyperbolic cosine.
     Acosh,
+    /// Inverse hyperbolic tangent.
     Atanh,
 
     // ── Misc ──
+    /// Absolute value.
     Abs,
     /// Zero derivative but needed for re-evaluation.
     Signum,
@@ -80,6 +114,7 @@ pub enum OpCode {
     Round,
     /// Zero derivative but needed for re-evaluation.
     Trunc,
+    /// Fractional part.
     Fract,
 
     // ── Custom ──

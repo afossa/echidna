@@ -68,6 +68,7 @@ pub fn tape_gradient_ndarray<F: Float>(tape: &mut BytecodeTape<F>, x: &Array1<F>
 }
 
 /// Evaluate Hessian on a pre-recorded tape, accepting and returning ndarray types.
+#[must_use]
 pub fn tape_hessian_ndarray<F: Float>(
     tape: &BytecodeTape<F>,
     x: &Array1<F>,
@@ -96,6 +97,7 @@ pub fn hvp_ndarray<F: Float + BtapeThreadLocal>(
 }
 
 /// Compute the Hessian-vector product on a pre-recorded tape, returning `(gradient, hvp)`.
+#[must_use]
 pub fn tape_hvp_ndarray<F: Float>(
     tape: &BytecodeTape<F>,
     x: &Array1<F>,
@@ -125,6 +127,7 @@ pub fn sparse_hessian_ndarray<F: Float + BtapeThreadLocal>(
 }
 
 /// Compute the sparse Hessian on a pre-recorded tape.
+#[must_use]
 pub fn tape_sparse_hessian_ndarray<F: Float>(
     tape: &BytecodeTape<F>,
     x: &Array1<F>,

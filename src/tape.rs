@@ -196,7 +196,9 @@ thread_local! {
 
 /// Trait to select the correct thread-local for a given float type.
 pub trait TapeThreadLocal: Float {
+    /// Returns the thread-local cell holding a pointer to the active tape.
     fn cell() -> &'static std::thread::LocalKey<Cell<*mut Tape<Self>>>;
+    /// Returns the thread-local cell holding the tape pool.
     fn pool_cell() -> &'static std::thread::LocalKey<Cell<Option<Tape<Self>>>>;
 }
 

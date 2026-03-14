@@ -40,6 +40,11 @@ pub fn laplacian_gpu<B: GpuBackend>(
         seeds.extend_from_slice(dir);
     }
 
+    // SAFETY(u32 cast): s is the number of random directions, bounded by practical GPU limits.
+    debug_assert!(
+        s <= u32::MAX as usize,
+        "too many directions for GPU dispatch"
+    );
     let result = backend.taylor_forward_2nd_batch(tape, &primals, &seeds, s as u32)?;
     Ok(aggregate_laplacian(&result, s))
 }
@@ -96,6 +101,8 @@ pub fn hessian_diagonal_gpu<B: GpuBackend>(
         seeds[j * n + j] = 1.0;
     }
 
+    // SAFETY(u32 cast): n is the number of input dimensions, bounded by practical GPU limits.
+    debug_assert!(n <= u32::MAX as usize, "too many inputs for GPU dispatch");
     let result = backend.taylor_forward_2nd_batch(tape, &primals, &seeds, n as u32)?;
 
     let value = result.values[0];
@@ -135,6 +142,11 @@ pub fn laplacian_with_control_gpu<B: GpuBackend>(
         seeds.extend_from_slice(dir);
     }
 
+    // SAFETY(u32 cast): s is the number of random directions, bounded by practical GPU limits.
+    debug_assert!(
+        s <= u32::MAX as usize,
+        "too many directions for GPU dispatch"
+    );
     let result = backend.taylor_forward_2nd_batch(tape, &primals, &seeds, s as u32)?;
 
     // Control variate: tr(diag(H)) is exact, reduce variance of off-diagonal estimate

@@ -17,6 +17,7 @@ thread_local! {
 /// Implemented for `f32`, `f64`, `Dual<f32>`, and `Dual<f64>`, enabling
 /// `BReverse<F>` to be used with these base types.
 pub trait BtapeThreadLocal: Float {
+    /// Returns the thread-local cell holding a pointer to the active bytecode tape.
     fn btape_cell() -> &'static std::thread::LocalKey<Cell<*mut BytecodeTape<Self>>>;
 }
 

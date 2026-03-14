@@ -14,6 +14,7 @@ use std::fmt::Write;
 ///
 /// # Panics
 /// Panics if `k` is not in 1..=5.
+#[must_use]
 pub fn generate_taylor_wgsl(k: usize) -> String {
     assert!((1..=5).contains(&k), "K must be in 1..=5, got {k}");
 
@@ -48,6 +49,7 @@ pub fn generate_taylor_wgsl(k: usize) -> String {
 ///
 /// # Panics
 /// Panics if `k` is not in 1..=5.
+#[must_use]
 pub fn generate_taylor_cuda(k: usize) -> String {
     assert!((1..=5).contains(&k), "K must be in 1..=5, got {k}");
 

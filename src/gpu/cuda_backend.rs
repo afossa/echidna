@@ -242,6 +242,7 @@ macro_rules! cuda_sparse_jacobian_body {
             return Ok((vals, pattern, vec![]));
         }
 
+        // SAFETY(u32 cast): num_colors is bounded by num_inputs, which fits in u32 (tape metadata).
         let batch = num_colors as u32;
         let mut seeds = Vec::with_capacity(batch as usize * ni);
         for c in 0..num_colors {
@@ -333,6 +334,7 @@ macro_rules! cuda_sparse_hessian_body {
             return Ok((val, grad, pattern, vec![]));
         }
 
+        // SAFETY(u32 cast): num_colors is bounded by num_inputs, which fits in u32 (tape metadata).
         let batch = num_colors as u32;
         let mut tangent_dirs = Vec::with_capacity(batch as usize * ni);
         for c in 0..num_colors {
@@ -558,6 +560,7 @@ impl CudaContext {
             return Err(GpuError::CustomOpsNotSupported);
         }
         let s = &self.stream;
+        // SAFETY(u32 cast): OpCode is #[repr(u8)], so *op as u32 is lossless.
         let opcodes: Vec<u32> = tape.opcodes_slice().iter().map(|op| *op as u32).collect();
         let args = tape.arg_indices_slice();
         let arg0: Vec<u32> = args.iter().map(|a| a[0]).collect();
@@ -574,6 +577,8 @@ impl CudaContext {
             // SAFETY(u32 cast): tape length cannot practically exceed u32::MAX (~4.3B opcodes
             // ≈ 17 GB of opcode storage alone).
             num_ops: tape.opcodes_slice().len() as u32,
+            // SAFETY(u32 cast): these counts are bounded by tape size (same order as num_ops),
+            // which cannot practically reach u32::MAX (~4.3B opcodes = ~17 GB).
             num_inputs: tape.num_inputs() as u32,
             num_variables: tape.num_variables_count() as u32,
             num_outputs: output_indices.len() as u32,
@@ -595,6 +600,8 @@ impl GpuBackend for CudaContext {
             num_ops: data.num_ops,
             num_inputs: data.num_inputs,
             num_variables: data.num_variables,
+            // SAFETY(u32 cast): output_indices.len() is bounded by tape outputs count,
+            // which is at most num_variables (already u32).
             num_outputs: data.output_indices.len() as u32,
         }
     }

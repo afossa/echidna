@@ -17,6 +17,7 @@ use crate::Float;
 /// `coeffs[k]` = f^(k)(t₀) / k! for k ≥ 1.
 #[derive(Clone, Copy, Debug)]
 pub struct Taylor<F: Float, const K: usize> {
+    /// Raw coefficient array: `coeffs[k]` = f^(k)(t0) / k!.
     pub coeffs: [F; K],
 }
 
@@ -110,6 +111,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
     // ── Elemental methods ──
     // Each delegates to taylor_ops with stack arrays as scratch.
 
+    /// Reciprocal (1/x).
     #[inline]
     pub fn recip(self) -> Self {
         let mut c = [F::zero(); K];
@@ -117,6 +119,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Square root.
     #[inline]
     pub fn sqrt(self) -> Self {
         let mut c = [F::zero(); K];
@@ -124,6 +127,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Cube root.
     #[inline]
     pub fn cbrt(self) -> Self {
         let mut c = [F::zero(); K];
@@ -133,6 +137,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Integer power.
     #[inline]
     pub fn powi(self, n: i32) -> Self {
         let mut c = [F::zero(); K];
@@ -142,6 +147,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Floating-point power.
     #[inline]
     pub fn powf(self, n: Self) -> Self {
         let mut c = [F::zero(); K];
@@ -151,6 +157,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Natural exponential (e^x).
     #[inline]
     pub fn exp(self) -> Self {
         let mut c = [F::zero(); K];
@@ -158,6 +165,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Base-2 exponential (2^x).
     #[inline]
     pub fn exp2(self) -> Self {
         let mut c = [F::zero(); K];
@@ -166,6 +174,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// e^x - 1, accurate near zero.
     #[inline]
     pub fn exp_m1(self) -> Self {
         let mut c = [F::zero(); K];
@@ -173,6 +182,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Natural logarithm.
     #[inline]
     pub fn ln(self) -> Self {
         let mut c = [F::zero(); K];
@@ -180,6 +190,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Base-2 logarithm.
     #[inline]
     pub fn log2(self) -> Self {
         let mut c = [F::zero(); K];
@@ -187,6 +198,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Base-10 logarithm.
     #[inline]
     pub fn log10(self) -> Self {
         let mut c = [F::zero(); K];
@@ -194,6 +206,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// ln(1+x), accurate near zero.
     #[inline]
     pub fn ln_1p(self) -> Self {
         let mut c = [F::zero(); K];
@@ -202,11 +215,13 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Logarithm with given base.
     #[inline]
     pub fn log(self, base: Self) -> Self {
         self.ln() / base.ln()
     }
 
+    /// Sine.
     #[inline]
     pub fn sin(self) -> Self {
         let mut s = [F::zero(); K];
@@ -215,6 +230,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: s }
     }
 
+    /// Cosine.
     #[inline]
     pub fn cos(self) -> Self {
         let mut s = [F::zero(); K];
@@ -223,6 +239,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: co }
     }
 
+    /// Simultaneous sine and cosine.
     #[inline]
     pub fn sin_cos(self) -> (Self, Self) {
         let mut s = [F::zero(); K];
@@ -231,6 +248,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         (Taylor { coeffs: s }, Taylor { coeffs: co })
     }
 
+    /// Tangent.
     #[inline]
     pub fn tan(self) -> Self {
         let mut c = [F::zero(); K];
@@ -239,6 +257,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Arcsine.
     #[inline]
     pub fn asin(self) -> Self {
         let mut c = [F::zero(); K];
@@ -248,6 +267,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Arccosine.
     #[inline]
     pub fn acos(self) -> Self {
         let mut c = [F::zero(); K];
@@ -257,6 +277,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Arctangent.
     #[inline]
     pub fn atan(self) -> Self {
         let mut c = [F::zero(); K];
@@ -266,6 +287,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Two-argument arctangent.
     #[inline]
     pub fn atan2(self, other: Self) -> Self {
         let mut c = [F::zero(); K];
@@ -283,6 +305,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Hyperbolic sine.
     #[inline]
     pub fn sinh(self) -> Self {
         let mut sh = [F::zero(); K];
@@ -291,6 +314,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: sh }
     }
 
+    /// Hyperbolic cosine.
     #[inline]
     pub fn cosh(self) -> Self {
         let mut sh = [F::zero(); K];
@@ -299,6 +323,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: ch }
     }
 
+    /// Hyperbolic tangent.
     #[inline]
     pub fn tanh(self) -> Self {
         let mut c = [F::zero(); K];
@@ -307,6 +332,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Inverse hyperbolic sine.
     #[inline]
     pub fn asinh(self) -> Self {
         let mut c = [F::zero(); K];
@@ -316,6 +342,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Inverse hyperbolic cosine.
     #[inline]
     pub fn acosh(self) -> Self {
         let mut c = [F::zero(); K];
@@ -325,6 +352,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Inverse hyperbolic tangent.
     #[inline]
     pub fn atanh(self) -> Self {
         let mut c = [F::zero(); K];
@@ -334,6 +362,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Absolute value.
     #[inline]
     pub fn abs(self) -> Self {
         let mut coeffs = self.coeffs;
@@ -344,11 +373,13 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs }
     }
 
+    /// Sign function (zero derivative).
     #[inline]
     pub fn signum(self) -> Self {
         Taylor::constant(self.coeffs[0].signum())
     }
 
+    /// Floor (zero derivative).
     #[inline]
     pub fn floor(self) -> Self {
         let mut c = [F::zero(); K];
@@ -356,6 +387,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Ceiling (zero derivative).
     #[inline]
     pub fn ceil(self) -> Self {
         let mut c = [F::zero(); K];
@@ -363,6 +395,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Round to nearest integer (zero derivative).
     #[inline]
     pub fn round(self) -> Self {
         let mut c = [F::zero(); K];
@@ -370,6 +403,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Truncate toward zero (zero derivative).
     #[inline]
     pub fn trunc(self) -> Self {
         let mut c = [F::zero(); K];
@@ -377,6 +411,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Fractional part.
     #[inline]
     pub fn fract(self) -> Self {
         let mut coeffs = self.coeffs;
@@ -384,11 +419,13 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs }
     }
 
+    /// Fused multiply-add: self * a + b.
     #[inline]
     pub fn mul_add(self, a: Self, b: Self) -> Self {
         self * a + b
     }
 
+    /// Euclidean distance: sqrt(self^2 + other^2).
     #[inline]
     pub fn hypot(self, other: Self) -> Self {
         let mut c = [F::zero(); K];
@@ -398,6 +435,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         Taylor { coeffs: c }
     }
 
+    /// Maximum of two values.
     #[inline]
     pub fn max(self, other: Self) -> Self {
         if self.coeffs[0] >= other.coeffs[0] {
@@ -407,6 +445,7 @@ impl<F: Float, const K: usize> Taylor<F, K> {
         }
     }
 
+    /// Minimum of two values.
     #[inline]
     pub fn min(self, other: Self) -> Self {
         if self.coeffs[0] <= other.coeffs[0] {

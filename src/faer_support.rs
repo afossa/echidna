@@ -61,6 +61,7 @@ pub fn tape_gradient_faer(tape: &mut BytecodeTape<f64>, x: &Col<f64>) -> Col<f64
 }
 
 /// Evaluate Hessian on a pre-recorded tape, accepting and returning faer types.
+#[must_use]
 pub fn tape_hessian_faer(tape: &BytecodeTape<f64>, x: &Col<f64>) -> (f64, Col<f64>, Mat<f64>) {
     let xs: Vec<f64> = (0..x.nrows()).map(|i| x[i]).collect();
     let (val, grad, hess) = tape.hessian(&xs);
@@ -90,6 +91,7 @@ pub fn hvp_faer(
 }
 
 /// Compute the Hessian-vector product on a pre-recorded tape.
+#[must_use]
 pub fn tape_hvp_faer(tape: &BytecodeTape<f64>, x: &Col<f64>, v: &Col<f64>) -> (Col<f64>, Col<f64>) {
     let xs: Vec<f64> = (0..x.nrows()).map(|i| x[i]).collect();
     let vs: Vec<f64> = (0..v.nrows()).map(|i| v[i]).collect();
@@ -112,6 +114,7 @@ pub fn sparse_hessian_faer(
 }
 
 /// Compute the sparse Hessian on a pre-recorded tape.
+#[must_use]
 pub fn tape_sparse_hessian_faer(
     tape: &BytecodeTape<f64>,
     x: &Col<f64>,
@@ -127,6 +130,7 @@ pub fn tape_sparse_hessian_faer(
 // ══════════════════════════════════════════════
 
 /// Solve `A * x = b` via dense partial-pivoting LU decomposition.
+#[must_use]
 pub fn solve_dense_lu_faer(a: &Mat<f64>, b: &Col<f64>) -> Col<f64> {
     use faer::linalg::solvers::Solve;
     a.partial_piv_lu().solve(b)
@@ -135,6 +139,7 @@ pub fn solve_dense_lu_faer(a: &Mat<f64>, b: &Col<f64>) -> Col<f64> {
 /// Solve `A * x = b` via dense Cholesky decomposition.
 ///
 /// Returns `None` if `A` is not positive-definite.
+#[must_use]
 pub fn solve_dense_cholesky_faer(a: &Mat<f64>, b: &Col<f64>) -> Option<Col<f64>> {
     use faer::linalg::solvers::Solve;
     Some(a.llt(faer::Side::Lower).ok()?.solve(b))
@@ -148,6 +153,7 @@ pub fn solve_dense_cholesky_faer(a: &Mat<f64>, b: &Col<f64>) -> Option<Col<f64>>
 /// symmetric `SparseColMat` suitable for faer's sparse solvers.
 ///
 /// Returns `None` if the triplet construction fails.
+#[must_use]
 pub fn sparsity_to_faer_symmetric(
     pattern: &crate::sparse::SparsityPattern,
     values: &[f64],
@@ -183,6 +189,7 @@ pub fn sparsity_to_faer_symmetric(
 /// given by a [`crate::SparsityPattern`] and its values (lower-triangle COO from `sparse_hessian`).
 ///
 /// Returns `None` if the matrix is not positive-definite or construction fails.
+#[must_use]
 pub fn solve_sparse_cholesky_faer(
     pattern: &crate::sparse::SparsityPattern,
     values: &[f64],
@@ -198,6 +205,7 @@ pub fn solve_sparse_cholesky_faer(
 /// given by a [`crate::SparsityPattern`] and its values.
 ///
 /// Returns `None` if the matrix is singular or construction fails.
+#[must_use]
 pub fn solve_sparse_lu_faer(
     pattern: &crate::sparse::SparsityPattern,
     values: &[f64],
