@@ -107,9 +107,7 @@ pub use laplacian::{
     hessian_diagonal, hessian_diagonal_with_buf, laplacian, laplacian_hutchpp,
     laplacian_with_control, laplacian_with_stats,
 };
-pub use pde::{
-    dense_stde_2nd, divergence, parabolic_diffusion, parabolic_diffusion_stochastic,
-};
+pub use pde::{dense_stde_2nd, divergence, parabolic_diffusion, parabolic_diffusion_stochastic};
 pub use pipeline::{estimate, estimate_weighted};
 pub use types::{DivergenceResult, EstimatorResult};
 
