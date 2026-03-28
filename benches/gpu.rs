@@ -1,6 +1,7 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use echidna::gpu::{GpuBackend, GpuTapeData, WgpuContext};
 use echidna::record;
+use std::hint::black_box;
 
 #[path = "common/mod.rs"]
 mod common;

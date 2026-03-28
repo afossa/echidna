@@ -1,7 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use echidna::{grad, record};
 use nalgebra::DVector;
 use num_dual::DualNum;
+use std::hint::black_box;
 
 use ad_trait::differentiable_function::{DifferentiableFunctionTrait, ForwardAD, ReverseAD};
 use ad_trait::function_engine::FunctionEngine;
@@ -109,7 +110,7 @@ fn bench_gradient_comparison(c: &mut Criterion) {
             b.iter(|| {
                 let (f, g) = num_dual::gradient(
                     |v: DVector<num_dual::DualDVec64>| rosenbrock_nd(v.as_slice()),
-                    black_box(x_dv.clone()),
+                    black_box(&x_dv.clone()),
                 );
                 black_box((f, g))
             })
@@ -162,7 +163,7 @@ fn bench_jacobian_comparison(c: &mut Criterion) {
                         let out = two_output_nd(v.as_slice());
                         DVector::from_column_slice(&out)
                     },
-                    black_box(x_dv.clone()),
+                    black_box(&x_dv.clone()),
                 );
                 black_box((f, jac))
             })
@@ -190,7 +191,7 @@ fn bench_hessian_comparison(c: &mut Criterion) {
             b.iter(|| {
                 let (f, g, h) = num_dual::hessian(
                     |v: DVector<num_dual::Dual2DVec64>| rosenbrock_nd(v.as_slice()),
-                    black_box(x_dv.clone()),
+                    black_box(&x_dv.clone()),
                 );
                 black_box((f, g, h))
             })
