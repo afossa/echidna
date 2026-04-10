@@ -694,3 +694,71 @@ mod phase5 {
         );
     }
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// Phase 5 continued: Taylor/Laurent edge cases (B6, B7, B8)
+// ════════════════════════════════════════════════════════════════════════
+
+#[cfg(feature = "taylor")]
+mod phase5_taylor {
+    use echidna::Taylor;
+
+    // ── B6: abs(0) should not zero the entire jet ──
+
+    #[test]
+    fn taylor_abs_zero_positive_approach() {
+        // f(t) = t, so a = [0, 1, 0]. abs(f(t)) should have c[1] = +1
+        let t = Taylor::<f64, 3>::new([0.0, 1.0, 0.0]);
+        let r = t.abs();
+        assert_eq!(r.coeffs[0], 0.0, "abs(0) = 0");
+        assert_eq!(r.coeffs[1], 1.0, "d/dt |t| at t=0+ should be +1, got {}", r.coeffs[1]);
+    }
+
+    #[test]
+    fn taylor_abs_zero_negative_approach() {
+        // f(t) = -t, so a = [0, -1, 0]. abs(f(t)) should have c[1] = +1 (sign flipped)
+        let t = Taylor::<f64, 3>::new([0.0, -1.0, 0.0]);
+        let r = t.abs();
+        assert_eq!(r.coeffs[0], 0.0, "abs(0) = 0");
+        assert_eq!(r.coeffs[1], 1.0, "d/dt |-t| at t=0 should be +1, got {}", r.coeffs[1]);
+    }
+
+    // ── B7: taylor_cbrt at zero should not produce NaN ──
+
+    #[test]
+    fn taylor_cbrt_zero() {
+        let t = Taylor::<f64, 3>::new([0.0, 1.0, 0.0]);
+        let r = t.cbrt();
+        assert_eq!(r.coeffs[0], 0.0, "cbrt(0) = 0");
+        // cbrt'(0) = Inf, so c[1] should be Inf (not NaN)
+        assert!(r.coeffs[1].is_infinite(), "cbrt'(0) should be Inf, got {}", r.coeffs[1]);
+        assert!(!r.coeffs[1].is_nan(), "cbrt'(0) should not be NaN");
+    }
+
+    // ── B8: taylor_sqrt at zero returns Inf (not NaN) ──
+
+    #[test]
+    fn taylor_sqrt_zero() {
+        let t = Taylor::<f64, 3>::new([0.0, 1.0, 0.0]);
+        let r = t.sqrt();
+        assert_eq!(r.coeffs[0], 0.0, "sqrt(0) = 0");
+        // sqrt'(0) = 1/(2*sqrt(0)) = Inf
+        assert!(r.coeffs[1].is_infinite(), "sqrt'(0) should be Inf, got {}", r.coeffs[1]);
+        assert!(!r.coeffs[1].is_nan(), "sqrt'(0) should not be NaN");
+    }
+}
+
+#[cfg(feature = "laurent")]
+mod phase5_laurent {
+    // ── B9: Laurent Add panics on large pole-order gap ──
+
+    #[test]
+    #[should_panic(expected = "pole-order gap")]
+    fn laurent_add_truncation_panics() {
+        use echidna::Laurent;
+        // Pole orders -5 and 0 with K=4: gap=5 > K-1=3, should panic
+        let a = Laurent::<f64, 4>::new([1.0, 0.0, 0.0, 0.0], -5);
+        let b = Laurent::<f64, 4>::new([1.0, 0.0, 0.0, 0.0], 0);
+        let _ = a + b; // should panic
+    }
+}
