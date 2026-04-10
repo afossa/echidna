@@ -316,4 +316,143 @@ mod phase4 {
         assert_eq!(a.min(b).re, 5.0, "min(5, NaN) should return 5");
         assert_eq!(b.min(a).re, 5.0, "min(NaN, 5) should return 5");
     }
+
+    #[test]
+    fn dualvec_powi_zero_at_zero() {
+        use echidna::DualVec;
+        let x = DualVec::<f64, 2>::with_tangent(0.0, 0);
+        let y = x.powi(0);
+        assert_eq!(y.re, 1.0);
+        assert!(!y.eps[0].is_nan(), "DualVec powi(0) eps should be 0, not NaN");
+        assert_eq!(y.eps[0], 0.0);
+    }
+
+    #[test]
+    fn dualvec_powf_zero_base() {
+        use echidna::DualVec;
+        let x = DualVec::<f64, 2>::with_tangent(0.0, 0);
+        let n = DualVec::<f64, 2>::constant(2.0);
+        let y = x.powf(n);
+        assert_eq!(y.re, 0.0);
+        assert!(!y.eps[0].is_nan(), "DualVec powf at x=0 should not be NaN");
+    }
+
+    #[test]
+    fn dualvec_max_min_nan() {
+        use echidna::DualVec;
+        let a = DualVec::<f64, 2>::constant(5.0);
+        let b = DualVec::<f64, 2>::constant(f64::NAN);
+        assert_eq!(a.max(b).re, 5.0, "DualVec max(5, NaN) should return 5");
+        assert_eq!(a.min(b).re, 5.0, "DualVec min(5, NaN) should return 5");
+    }
+}
+
+// ══════════════════════════════════════════════════════
+//  Phase 1C: Additional test coverage (review-fix gaps)
+// ══════════════════════════════════════════════════════
+
+#[cfg(feature = "bytecode")]
+mod phase1c_breverse {
+    use echidna::{record, BReverse};
+
+    // Test the reverse directions (scalar op BReverse::constant) that were untested
+    #[test]
+    fn scalar_add_breverse_constant() {
+        let (mut tape, val) = record(|_| 1.0 + BReverse::constant(3.0_f64), &[1.0]);
+        assert_eq!(val, 4.0);
+        let grad = tape.gradient(&[1.0]);
+        assert_eq!(grad[0], 0.0);
+    }
+
+    #[test]
+    fn breverse_constant_sub_scalar() {
+        let (mut tape, val) = record(|_| BReverse::constant(10.0_f64) - 3.0, &[1.0]);
+        assert_eq!(val, 7.0);
+        let grad = tape.gradient(&[1.0]);
+        assert_eq!(grad[0], 0.0);
+    }
+
+    #[test]
+    fn scalar_mul_breverse_constant() {
+        let (mut tape, val) = record(|_| 5.0 * BReverse::constant(2.0_f64), &[1.0]);
+        assert_eq!(val, 10.0);
+        let grad = tape.gradient(&[1.0]);
+        assert_eq!(grad[0], 0.0);
+    }
+
+    #[test]
+    fn breverse_constant_div_scalar() {
+        let (mut tape, val) = record(|_| BReverse::constant(12.0_f64) / 4.0, &[1.0]);
+        assert_eq!(val, 3.0);
+        let grad = tape.gradient(&[1.0]);
+        assert_eq!(grad[0], 0.0);
+    }
+
+    #[test]
+    fn scalar_rem_breverse_constant() {
+        let (mut tape, val) = record(|_| 7.0 % BReverse::constant(3.0_f64), &[1.0]);
+        assert_eq!(val, 1.0);
+        let grad = tape.gradient(&[1.0]);
+        assert_eq!(grad[0], 0.0);
+    }
+}
+
+#[cfg(feature = "laurent")]
+mod phase1c_laurent {
+    use echidna::Laurent;
+    use num_traits::Float;
+
+    #[test]
+    fn laurent_ln_normalizes() {
+        // ln(1 + t) has c[0] = ln(1) = 0, so normalization should shift
+        let l = Laurent::<f64, 4>::variable(1.0).ln();
+        assert_eq!(l.value(), 0.0);
+        assert_eq!(l.pole_order(), 1, "ln result must normalize leading zero");
+    }
+
+    #[test]
+    fn laurent_log10_pole_is_nan() {
+        let l = Laurent::<f64, 4>::variable(0.0); // pole_order = 1
+        let result = l.log10();
+        assert!(result.value().is_nan(), "log10 of series with zero should be NaN");
+    }
+
+    #[test]
+    fn laurent_to_radians_preserves_pole() {
+        use num_traits::FloatConst;
+        let l = Laurent::<f64, 4>::variable(1.0).recip();
+        let rad = l.to_radians();
+        let factor = f64::PI() / 180.0;
+        assert!((rad.value() - l.value() * factor).abs() < 1e-8);
+        assert_eq!(rad.pole_order(), l.pole_order());
+    }
+}
+
+#[cfg(all(feature = "bytecode", feature = "diffop"))]
+mod phase1c_sparsity {
+    use echidna::record;
+    use num_traits::Float as _;
+
+    #[test]
+    fn sparsity_custom_binary_op() {
+        // Verify sparsity detection works correctly.
+        // Use a function with known Hessian structure and check
+        // that sparse_hessian produces the same result as dense hessian.
+        let (mut tape, _) = record(|x| x[0] * x[1] + x[0].sin(), &[1.0, 2.0]);
+        let dense = tape.hessian(&[1.0, 2.0]);
+        let (_, _, pattern, _sparse_vals) = tape.sparse_hessian(&[1.0, 2.0]);
+
+        // Verify all nonzero entries in dense appear in sparse
+        for i in 0..2 {
+            for j in 0..=i {
+                if (dense.2[i][j] as f64).abs() > 1e-12 {
+                    assert!(
+                        pattern.contains(i, j),
+                        "dense H[{i},{j}]={} missing from sparse pattern",
+                        dense.2[i][j]
+                    );
+                }
+            }
+        }
+    }
 }
