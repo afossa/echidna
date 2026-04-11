@@ -146,8 +146,8 @@ pub fn taylor_sqrt<F: Float>(a: &[F], c: &mut [F]) {
     if a[0] == F::zero() {
         // sqrt(0) = 0, but sqrt'(0) = 1/(2*sqrt(0)) = Inf (vertical tangent).
         c[0] = F::zero();
-        for i in 1..n {
-            c[i] = F::infinity();
+        for ci in c.iter_mut().skip(1) {
+            *ci = F::infinity();
         }
         return;
     }
@@ -552,8 +552,8 @@ pub fn taylor_cbrt<F: Float>(a: &[F], c: &mut [F], scratch1: &mut [F], scratch2:
     if a[0] == F::zero() {
         // cbrt(0) = 0, but cbrt'(0) = 1/(3*cbrt(0)^2) = Inf (vertical tangent).
         c[0] = F::zero();
-        for i in 1..deg {
-            c[i] = F::infinity();
+        for ci in c.iter_mut().skip(1) {
+            *ci = F::infinity();
         }
         return;
     }
@@ -569,8 +569,8 @@ pub fn taylor_cbrt<F: Float>(a: &[F], c: &mut [F], scratch1: &mut [F], scratch2:
         taylor_scale(scratch1, third, scratch2);
         taylor_exp(scratch2, c);
         c[0] = a[0].cbrt();
-        for i in 1..deg {
-            c[i] = -c[i];
+        for ci in c.iter_mut().skip(1) {
+            *ci = -*ci;
         }
     } else {
         let three = F::from(3.0).unwrap();
