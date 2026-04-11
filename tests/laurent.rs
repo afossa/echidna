@@ -270,15 +270,9 @@ fn regression_21_laurent_max_nan_returns_non_nan() {
     let valid = L3::constant(5.0);
     let nan = L3::constant(f64::NAN);
     let r1 = valid.max(nan);
-    assert!(
-        !r1.value().is_nan(),
-        "max(valid, nan) should return valid"
-    );
+    assert!(!r1.value().is_nan(), "max(valid, nan) should return valid");
     let r2 = nan.max(valid);
-    assert!(
-        !r2.value().is_nan(),
-        "max(nan, valid) should return valid"
-    );
+    assert!(!r2.value().is_nan(), "max(nan, valid) should return valid");
 }
 
 #[test]
@@ -286,15 +280,9 @@ fn regression_21_laurent_min_nan_returns_non_nan() {
     let valid = L3::constant(5.0);
     let nan = L3::constant(f64::NAN);
     let r1 = valid.min(nan);
-    assert!(
-        !r1.value().is_nan(),
-        "min(valid, nan) should return valid"
-    );
+    assert!(!r1.value().is_nan(), "min(valid, nan) should return valid");
     let r2 = nan.min(valid);
-    assert!(
-        !r2.value().is_nan(),
-        "min(nan, valid) should return valid"
-    );
+    assert!(!r2.value().is_nan(), "min(nan, valid) should return valid");
 }
 
 // ── #22: Laurent powi pole_order overflow ──

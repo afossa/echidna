@@ -908,7 +908,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
     // Nonsmooth — ABS: use signum (±1 including at 0) to match Rust's f64::signum
     writeln!(s, "            case 36u: {{").unwrap();
-    writeln!(s, "                let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);").unwrap();
+    writeln!(
+        s,
+        "                let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);"
+    )
+    .unwrap();
     writeln!(s, "                r.v[0] = abs(a.v[0]);").unwrap();
     for i in 1..k {
         writeln!(s, "                r.v[{i}] = sg * a.v[{i}];").unwrap();
@@ -918,7 +922,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "            case 37u, 38u, 39u, 40u, 41u: {{").unwrap();
     writeln!(s, "                var val = 0.0f;").unwrap();
     writeln!(s, "                switch op {{").unwrap();
-    writeln!(s, "                    case 37u: {{ val = select(sign(a.v[0]), 1.0, a.v[0] == 0.0); }}").unwrap();
+    writeln!(
+        s,
+        "                    case 37u: {{ val = select(sign(a.v[0]), 1.0, a.v[0] == 0.0); }}"
+    )
+    .unwrap();
     writeln!(
         s,
         "                    case 38u: {{ val = floor(a.v[0]); }}"
@@ -1398,7 +1406,11 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     .unwrap();
     writeln!(s, "    if (bid >= batch_size) return;").unwrap();
     writeln!(s, "    const unsigned int K = {k};").unwrap();
-    writeln!(s, "    unsigned long long j_base = (unsigned long long)bid * num_variables * K;").unwrap();
+    writeln!(
+        s,
+        "    unsigned long long j_base = (unsigned long long)bid * num_variables * K;"
+    )
+    .unwrap();
 
     // Initialize
     writeln!(s, "    for (unsigned int i = 0; i < num_variables; i++) {{").unwrap();
@@ -1410,7 +1422,11 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "    }}").unwrap();
 
     // Set inputs
-    writeln!(s, "    unsigned long long in_base = (unsigned long long)bid * num_inputs;").unwrap();
+    writeln!(
+        s,
+        "    unsigned long long in_base = (unsigned long long)bid * num_inputs;"
+    )
+    .unwrap();
     writeln!(s, "    for (unsigned int i = 0; i < num_inputs; i++) {{").unwrap();
     writeln!(s, "        unsigned int off = j_base + i * K;").unwrap();
     writeln!(s, "        jets[off] = primal_inputs[in_base + i];").unwrap();
@@ -1625,7 +1641,11 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "            if (ni == 0) {{ r = jet_const((F)1); }}").unwrap();
     writeln!(s, "            else if (ni == 1) {{ r = a; }}").unwrap();
     // a.v[0] == 0 with n>=2: 0^n = 0. For negative n, fall through to exp-ln (produces Inf).
-    writeln!(s, "            else if (a.v[0] == F(0) && ni >= 2) {{ r = jet_const(F(0)); }}").unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni >= 2) {{ r = jet_const(F(0)); }}"
+    )
+    .unwrap();
     writeln!(s, "            else if (a.v[0] <= F(0)) {{").unwrap();
     writeln!(s, "                F sf = (ni % 2 == 0) ? F(1) : F(-1);").unwrap();
     writeln!(s, "                F sg = _sign(a.v[0]);").unwrap();
@@ -1763,7 +1783,11 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "    }}").unwrap();
 
     // Write outputs
-    writeln!(s, "    unsigned long long out_base = (unsigned long long)bid * num_outputs * K;").unwrap();
+    writeln!(
+        s,
+        "    unsigned long long out_base = (unsigned long long)bid * num_outputs * K;"
+    )
+    .unwrap();
     writeln!(s, "    for (unsigned int j = 0; j < num_outputs; j++) {{").unwrap();
     writeln!(s, "        unsigned int oi = output_indices[j];").unwrap();
     writeln!(s, "        unsigned int src = j_base + oi * K;").unwrap();

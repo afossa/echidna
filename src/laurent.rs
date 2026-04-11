@@ -375,7 +375,10 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         taylor_ops::taylor_powi(&self.coeffs, n, &mut c, &mut s1, &mut s2);
         let mut l = Laurent {
             coeffs: c,
-            pole_order: self.pole_order.checked_mul(n).expect("Laurent::powi: pole_order overflow"),
+            pole_order: self
+                .pole_order
+                .checked_mul(n)
+                .expect("Laurent::powi: pole_order overflow"),
         };
         l.normalize();
         l

@@ -922,11 +922,7 @@ impl Objective<f64> for NanGradObj {
     }
 
     fn eval_hessian(&mut self, _x: &[f64]) -> (f64, Vec<f64>, Vec<Vec<f64>>) {
-        (
-            f64::NAN,
-            vec![f64::NAN; 2],
-            vec![vec![f64::NAN; 2]; 2],
-        )
+        (f64::NAN, vec![f64::NAN; 2], vec![vec![f64::NAN; 2]; 2])
     }
 
     fn hvp(&mut self, _x: &[f64], v: &[f64]) -> (Vec<f64>, Vec<f64>) {
