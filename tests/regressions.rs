@@ -69,10 +69,8 @@ mod phase1 {
 
     #[test]
     fn record_multi_mixed_constant() {
-        let (mut tape, vals) = record_multi(
-            |x| vec![x[0] * x[0], BReverse::constant(99.0)],
-            &[3.0],
-        );
+        let (mut tape, vals) =
+            record_multi(|x| vec![x[0] * x[0], BReverse::constant(99.0)], &[3.0]);
         assert_eq!(vals[0], 9.0);
         assert_eq!(vals[1], 99.0);
         // Verify gradient of first (non-constant) output works
@@ -118,7 +116,10 @@ mod phase2 {
         );
         let y = x.powi(3);
         // f''(-2) = 6*(-2) = -12, lives in eps.eps for nested dual
-        assert!(!y.eps.eps.is_nan(), "nested powi second derivative should not be NaN");
+        assert!(
+            !y.eps.eps.is_nan(),
+            "nested powi second derivative should not be NaN"
+        );
         assert!((y.eps.eps - (-12.0)).abs() < 1e-10);
     }
 
@@ -139,7 +140,10 @@ mod phase2 {
         let (mut tape, val) = echidna::record(|x| x[0].powi(0), &[0.0]);
         assert_eq!(val, 1.0);
         let grad = tape.gradient(&[0.0]);
-        assert!(!grad[0].is_nan(), "tape powi(0) gradient should be 0, not NaN");
+        assert!(
+            !grad[0].is_nan(),
+            "tape powi(0) gradient should be 0, not NaN"
+        );
         assert_eq!(grad[0], 0.0);
     }
 
@@ -149,7 +153,10 @@ mod phase2 {
         use echidna::Taylor;
         let t = Taylor::<f64, 4>::variable(0.0).powi(10);
         assert_eq!(t.coeffs[0], 0.0);
-        assert!(!t.coeffs[1].is_nan(), "taylor powi(10) at zero should not produce NaN");
+        assert!(
+            !t.coeffs[1].is_nan(),
+            "taylor powi(10) at zero should not produce NaN"
+        );
         // All derivatives of x^10 at x=0 are zero for orders 1-3
         assert_eq!(t.coeffs[1], 0.0);
         assert_eq!(t.coeffs[2], 0.0);
@@ -162,10 +169,16 @@ mod phase2 {
         use echidna::Taylor;
         let t = Taylor::<f64, 4>::variable(-8.0).cbrt();
         assert!((t.coeffs[0] - (-2.0)).abs() < 1e-12, "cbrt(-8) = -2");
-        assert!(!t.coeffs[1].is_nan(), "cbrt derivative of negative value should not be NaN");
+        assert!(
+            !t.coeffs[1].is_nan(),
+            "cbrt derivative of negative value should not be NaN"
+        );
         // Cross-validate derivative against finite differences
         let fd = super::finite_diff(|x| x.cbrt(), -8.0);
-        assert!((t.coeffs[1] - fd).abs() < 1e-4, "cbrt derivative should match FD");
+        assert!(
+            (t.coeffs[1] - fd).abs() < 1e-4,
+            "cbrt derivative should match FD"
+        );
     }
 
     #[cfg(feature = "bytecode")]
@@ -175,7 +188,10 @@ mod phase2 {
         let (mut tape, val) = echidna::record(|x| x[0].hypot(x[1]), &[0.0, 0.0]);
         assert_eq!(val, 0.0);
         let grad = tape.gradient(&[0.0, 0.0]);
-        assert!(!grad[0].is_nan(), "hypot(0,0) gradient should be 0, not NaN");
+        assert!(
+            !grad[0].is_nan(),
+            "hypot(0,0) gradient should be 0, not NaN"
+        );
         assert_eq!(grad[0], 0.0);
         assert_eq!(grad[1], 0.0);
     }
@@ -206,7 +222,10 @@ mod phase3_taylor {
         let t = a.atan2(b);
         let half_pi = std::f64::consts::FRAC_PI_2;
         assert!((t.coeffs[0] - half_pi).abs() < 1e-12, "atan2(1,0) = pi/2");
-        assert!(!t.coeffs[1].is_nan(), "atan2 derivative at b=0 should not be NaN");
+        assert!(
+            !t.coeffs[1].is_nan(),
+            "atan2 derivative at b=0 should not be NaN"
+        );
         assert_eq!(t.coeffs[1], 0.0, "d/da atan2(a,0) = 0 for a > 0");
     }
 }
@@ -233,7 +252,10 @@ mod phase3_laurent {
         let l = Laurent::<f64, 4>::variable(0.0);
         assert_ne!(l.pole_order(), 0);
         let result = l.log2();
-        assert!(result.value().is_nan(), "log2 of series with zero should be NaN");
+        assert!(
+            result.value().is_nan(),
+            "log2 of series with zero should be NaN"
+        );
     }
 
     #[test]
@@ -323,7 +345,10 @@ mod phase4 {
         let x = DualVec::<f64, 2>::with_tangent(0.0, 0);
         let y = x.powi(0);
         assert_eq!(y.re, 1.0);
-        assert!(!y.eps[0].is_nan(), "DualVec powi(0) eps should be 0, not NaN");
+        assert!(
+            !y.eps[0].is_nan(),
+            "DualVec powi(0) eps should be 0, not NaN"
+        );
         assert_eq!(y.eps[0], 0.0);
     }
 
@@ -414,7 +439,10 @@ mod phase1c_laurent {
     fn laurent_log10_pole_is_nan() {
         let l = Laurent::<f64, 4>::variable(0.0); // pole_order = 1
         let result = l.log10();
-        assert!(result.value().is_nan(), "log10 of series with zero should be NaN");
+        assert!(
+            result.value().is_nan(),
+            "log10 of series with zero should be NaN"
+        );
     }
 
     #[test]
@@ -544,14 +572,26 @@ mod phase5 {
         let y = Dual::new(0.0_f64, 1.0);
         let x = Dual::new(0.0_f64, 0.0);
         let r = y.atan2(x);
-        assert!(r.eps.is_finite(), "atan2(0,0) dual derivative must be finite, got {}", r.eps);
+        assert!(
+            r.eps.is_finite(),
+            "atan2(0,0) dual derivative must be finite, got {}",
+            r.eps
+        );
     }
 
     #[test]
     fn atan2_zero_zero_reverse() {
         let g = echidna::api::grad(|x| x[0].atan2(x[1]), &[0.0_f64, 0.0]);
-        assert!(g[0].is_finite(), "atan2(0,0) reverse dy must be finite, got {}", g[0]);
-        assert!(g[1].is_finite(), "atan2(0,0) reverse dx must be finite, got {}", g[1]);
+        assert!(
+            g[0].is_finite(),
+            "atan2(0,0) reverse dy must be finite, got {}",
+            g[0]
+        );
+        assert!(
+            g[1].is_finite(),
+            "atan2(0,0) reverse dx must be finite, got {}",
+            g[1]
+        );
     }
 
     #[test]
@@ -577,8 +617,16 @@ mod phase5 {
     #[test]
     fn powf_zero_zero_reverse() {
         let g = echidna::api::grad(|x| x[0].powf(x[1]), &[0.0_f64, 0.0]);
-        assert!(g[0].is_finite(), "powf(0,0) reverse dx must be finite, got {}", g[0]);
-        assert!(g[1].is_finite(), "powf(0,0) reverse dy must be finite, got {}", g[1]);
+        assert!(
+            g[0].is_finite(),
+            "powf(0,0) reverse dx must be finite, got {}",
+            g[0]
+        );
+        assert!(
+            g[1].is_finite(),
+            "powf(0,0) reverse dy must be finite, got {}",
+            g[1]
+        );
     }
 
     #[test]
@@ -589,14 +637,22 @@ mod phase5 {
         let n = Dual::new(0.0_f64, 1.0); // seed derivative w.r.t. exponent
         let r = x.powf(n);
         assert_eq!(r.re, 1.0, "2^0 = 1");
-        assert!((r.eps - 2.0_f64.ln()).abs() < 1e-12, "d/dy(2^y) at y=0 = ln(2), got {}", r.eps);
+        assert!(
+            (r.eps - 2.0_f64.ln()).abs() < 1e-12,
+            "d/dy(2^y) at y=0 = ln(2), got {}",
+            r.eps
+        );
     }
 
     #[test]
     fn powf_positive_base_zero_exp_reverse() {
         let g = echidna::api::grad(|x| x[0].powf(x[1]), &[2.0_f64, 0.0]);
         assert_eq!(g[0], 0.0, "d/dx(x^0) = 0");
-        assert!((g[1] - 2.0_f64.ln()).abs() < 1e-12, "d/dy(2^y) at y=0 = ln(2), got {}", g[1]);
+        assert!(
+            (g[1] - 2.0_f64.ln()).abs() < 1e-12,
+            "d/dy(2^y) at y=0 = ln(2), got {}",
+            g[1]
+        );
     }
 
     #[test]
@@ -605,7 +661,11 @@ mod phase5 {
         assert_eq!(val, 1.0, "2^0 = 1");
         let grad = tape.gradient(&[2.0, 0.0]);
         assert_eq!(grad[0], 0.0, "d/dx(x^0) = 0 via breverse");
-        assert!((grad[1] - 2.0_f64.ln()).abs() < 1e-12, "d/dy(2^y) at y=0 = ln(2) via breverse, got {}", grad[1]);
+        assert!(
+            (grad[1] - 2.0_f64.ln()).abs() < 1e-12,
+            "d/dy(2^y) at y=0 = ln(2) via breverse, got {}",
+            grad[1]
+        );
     }
 
     // ── B11: Reverse powf(0, 2) derivative should be 0 ──
@@ -637,7 +697,10 @@ mod phase5 {
 
         let step = |x: &[BReverse<f64>]| {
             let half = BReverse::constant(0.5_f64);
-            vec![x[0] * half + x[1].sin() * half, x[0].cos() * half + x[1] * half]
+            vec![
+                x[0] * half + x[1].sin() * half,
+                x[0].cos() * half + x[1] * half,
+            ]
         };
         let loss = |x: &[BReverse<f64>]| x[0] * x[0] + x[1];
 
@@ -654,7 +717,9 @@ mod phase5 {
             assert!(
                 (g_online[i] - g_ref[i]).abs() < 1e-10,
                 "B5 thinning regression at {}: online={}, ref={}",
-                i, g_online[i], g_ref[i]
+                i,
+                g_online[i],
+                g_ref[i]
             );
         }
     }
@@ -711,7 +776,11 @@ mod phase5_taylor {
         let t = Taylor::<f64, 3>::new([0.0, 1.0, 0.0]);
         let r = t.abs();
         assert_eq!(r.coeffs[0], 0.0, "abs(0) = 0");
-        assert_eq!(r.coeffs[1], 1.0, "d/dt |t| at t=0+ should be +1, got {}", r.coeffs[1]);
+        assert_eq!(
+            r.coeffs[1], 1.0,
+            "d/dt |t| at t=0+ should be +1, got {}",
+            r.coeffs[1]
+        );
     }
 
     #[test]
@@ -720,7 +789,11 @@ mod phase5_taylor {
         let t = Taylor::<f64, 3>::new([0.0, -1.0, 0.0]);
         let r = t.abs();
         assert_eq!(r.coeffs[0], 0.0, "abs(0) = 0");
-        assert_eq!(r.coeffs[1], 1.0, "d/dt |-t| at t=0 should be +1, got {}", r.coeffs[1]);
+        assert_eq!(
+            r.coeffs[1], 1.0,
+            "d/dt |-t| at t=0 should be +1, got {}",
+            r.coeffs[1]
+        );
     }
 
     // ── B7: taylor_cbrt at zero should not produce NaN ──
@@ -731,7 +804,11 @@ mod phase5_taylor {
         let r = t.cbrt();
         assert_eq!(r.coeffs[0], 0.0, "cbrt(0) = 0");
         // cbrt'(0) = Inf, so c[1] should be Inf (not NaN)
-        assert!(r.coeffs[1].is_infinite(), "cbrt'(0) should be Inf, got {}", r.coeffs[1]);
+        assert!(
+            r.coeffs[1].is_infinite(),
+            "cbrt'(0) should be Inf, got {}",
+            r.coeffs[1]
+        );
         assert!(!r.coeffs[1].is_nan(), "cbrt'(0) should not be NaN");
     }
 
@@ -743,7 +820,11 @@ mod phase5_taylor {
         let r = t.sqrt();
         assert_eq!(r.coeffs[0], 0.0, "sqrt(0) = 0");
         // sqrt'(0) = 1/(2*sqrt(0)) = Inf
-        assert!(r.coeffs[1].is_infinite(), "sqrt'(0) should be Inf, got {}", r.coeffs[1]);
+        assert!(
+            r.coeffs[1].is_infinite(),
+            "sqrt'(0) should be Inf, got {}",
+            r.coeffs[1]
+        );
         assert!(!r.coeffs[1].is_nan(), "sqrt'(0) should not be NaN");
     }
 }

@@ -232,8 +232,7 @@ fn classify_op(op: OpCode) -> OpClass {
         | OpCode::Tanh
         | OpCode::Asinh
         | OpCode::Acosh
-        | OpCode::Atanh
-        => OpClass::UnaryNonlinear,
+        | OpCode::Atanh => OpClass::UnaryNonlinear,
 
         // Binary nonlinear: cross-derivatives between operands
         OpCode::Mul | OpCode::Div | OpCode::Powf | OpCode::Atan2 | OpCode::Hypot => {

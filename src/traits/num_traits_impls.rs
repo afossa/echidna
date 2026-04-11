@@ -658,7 +658,11 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
     fn powf(self, n: Self) -> Self {
         if n.value == F::zero() {
             // a^0 = 1, d/da(a^0) = 0, d/db(a^b)|_{b=0} = ln(a) (for a > 0)
-            let dy = if self.value > F::zero() { self.value.ln() } else { F::zero() };
+            let dy = if self.value > F::zero() {
+                self.value.ln()
+            } else {
+                F::zero()
+            };
             return rev_binary(self, n, F::one(), F::zero(), dy);
         }
         let val = self.value.powf(n.value);

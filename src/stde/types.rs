@@ -59,7 +59,10 @@ impl<F: Float> WelfordAccumulator<F> {
     /// `sample` must be finite. A NaN or Inf sample will poison the running
     /// mean and variance, producing NaN for all subsequent updates.
     pub(super) fn update(&mut self, sample: F) {
-        debug_assert!(sample.is_finite(), "WelfordAccumulator::update: sample must be finite");
+        debug_assert!(
+            sample.is_finite(),
+            "WelfordAccumulator::update: sample must be finite"
+        );
         self.count += 1;
         let k1 = F::from(self.count).unwrap();
         let delta = sample - self.mean;

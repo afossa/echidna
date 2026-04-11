@@ -2,11 +2,11 @@
 
 use echidna::{record, Scalar};
 
-use echidna::gpu::{GpuBackend, GpuTapeData};
-#[cfg(feature = "gpu-wgpu")]
-use echidna::gpu::WgpuContext;
 #[cfg(feature = "gpu-cuda")]
 use echidna::gpu::CudaContext;
+#[cfg(feature = "gpu-wgpu")]
+use echidna::gpu::WgpuContext;
+use echidna::gpu::{GpuBackend, GpuTapeData};
 
 fn rosenbrock<T: Scalar>(x: &[T]) -> T {
     let one = T::from_f(<T::Float as num_traits::FromPrimitive>::from_f64(1.0).unwrap());
@@ -219,29 +219,75 @@ fn check_1d(
     );
 }
 
-fn f_exp<T: Scalar>(x: &[T]) -> T { x[0].exp() }
-fn f_ln<T: Scalar>(x: &[T]) -> T { x[0].ln() }
-fn f_exp2<T: Scalar>(x: &[T]) -> T { x[0].exp2() }
-fn f_log2<T: Scalar>(x: &[T]) -> T { x[0].log2() }
-fn f_log10<T: Scalar>(x: &[T]) -> T { x[0].log10() }
-fn f_ln_1p<T: Scalar>(x: &[T]) -> T { x[0].ln_1p() }
-fn f_exp_m1<T: Scalar>(x: &[T]) -> T { x[0].exp_m1() }
-fn f_sqrt<T: Scalar>(x: &[T]) -> T { x[0].sqrt() }
-fn f_cbrt<T: Scalar>(x: &[T]) -> T { x[0].cbrt() }
-fn f_sin<T: Scalar>(x: &[T]) -> T { x[0].sin() }
-fn f_cos<T: Scalar>(x: &[T]) -> T { x[0].cos() }
-fn f_tan<T: Scalar>(x: &[T]) -> T { x[0].tan() }
-fn f_sinh<T: Scalar>(x: &[T]) -> T { x[0].sinh() }
-fn f_cosh<T: Scalar>(x: &[T]) -> T { x[0].cosh() }
-fn f_tanh<T: Scalar>(x: &[T]) -> T { x[0].tanh() }
-fn f_asin<T: Scalar>(x: &[T]) -> T { x[0].asin() }
-fn f_acos<T: Scalar>(x: &[T]) -> T { x[0].acos() }
-fn f_atan<T: Scalar>(x: &[T]) -> T { x[0].atan() }
-fn f_asinh<T: Scalar>(x: &[T]) -> T { x[0].asinh() }
-fn f_acosh<T: Scalar>(x: &[T]) -> T { x[0].acosh() }
-fn f_atanh<T: Scalar>(x: &[T]) -> T { x[0].atanh() }
-fn f_abs_fn<T: Scalar>(x: &[T]) -> T { x[0].abs() }
-fn f_powi3<T: Scalar>(x: &[T]) -> T { x[0].powi(3) }
+fn f_exp<T: Scalar>(x: &[T]) -> T {
+    x[0].exp()
+}
+fn f_ln<T: Scalar>(x: &[T]) -> T {
+    x[0].ln()
+}
+fn f_exp2<T: Scalar>(x: &[T]) -> T {
+    x[0].exp2()
+}
+fn f_log2<T: Scalar>(x: &[T]) -> T {
+    x[0].log2()
+}
+fn f_log10<T: Scalar>(x: &[T]) -> T {
+    x[0].log10()
+}
+fn f_ln_1p<T: Scalar>(x: &[T]) -> T {
+    x[0].ln_1p()
+}
+fn f_exp_m1<T: Scalar>(x: &[T]) -> T {
+    x[0].exp_m1()
+}
+fn f_sqrt<T: Scalar>(x: &[T]) -> T {
+    x[0].sqrt()
+}
+fn f_cbrt<T: Scalar>(x: &[T]) -> T {
+    x[0].cbrt()
+}
+fn f_sin<T: Scalar>(x: &[T]) -> T {
+    x[0].sin()
+}
+fn f_cos<T: Scalar>(x: &[T]) -> T {
+    x[0].cos()
+}
+fn f_tan<T: Scalar>(x: &[T]) -> T {
+    x[0].tan()
+}
+fn f_sinh<T: Scalar>(x: &[T]) -> T {
+    x[0].sinh()
+}
+fn f_cosh<T: Scalar>(x: &[T]) -> T {
+    x[0].cosh()
+}
+fn f_tanh<T: Scalar>(x: &[T]) -> T {
+    x[0].tanh()
+}
+fn f_asin<T: Scalar>(x: &[T]) -> T {
+    x[0].asin()
+}
+fn f_acos<T: Scalar>(x: &[T]) -> T {
+    x[0].acos()
+}
+fn f_atan<T: Scalar>(x: &[T]) -> T {
+    x[0].atan()
+}
+fn f_asinh<T: Scalar>(x: &[T]) -> T {
+    x[0].asinh()
+}
+fn f_acosh<T: Scalar>(x: &[T]) -> T {
+    x[0].acosh()
+}
+fn f_atanh<T: Scalar>(x: &[T]) -> T {
+    x[0].atanh()
+}
+fn f_abs_fn<T: Scalar>(x: &[T]) -> T {
+    x[0].abs()
+}
+fn f_powi3<T: Scalar>(x: &[T]) -> T {
+    x[0].powi(3)
+}
 fn f_powf25<T: Scalar>(x: &[T]) -> T {
     let exp = T::from_f(<T::Float as num_traits::FromPrimitive>::from_f64(2.5).unwrap());
     x[0].powf(exp)
@@ -263,57 +309,113 @@ macro_rules! opcode_tests_for_backend {
         mod $mod_name {
             use super::*;
 
-            fn get_ctx() -> Option<$ctx_ty> { $ctx_fn() }
+            fn get_ctx() -> Option<$ctx_ty> {
+                $ctx_fn()
+            }
 
-            #[test] fn op_exp_ln() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_exp, 1.5, "exp"); check_1d(&ctx, f_ln, 2.0, "ln");
-                check_1d(&ctx, f_exp2, 1.0, "exp2"); check_1d(&ctx, f_log2, 3.0, "log2");
-                check_1d(&ctx, f_log10, 2.0, "log10"); check_1d(&ctx, f_ln_1p, 0.5, "ln_1p");
+            #[test]
+            fn op_exp_ln() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_exp, 1.5, "exp");
+                check_1d(&ctx, f_ln, 2.0, "ln");
+                check_1d(&ctx, f_exp2, 1.0, "exp2");
+                check_1d(&ctx, f_log2, 3.0, "log2");
+                check_1d(&ctx, f_log10, 2.0, "log10");
+                check_1d(&ctx, f_ln_1p, 0.5, "ln_1p");
                 check_1d(&ctx, f_exp_m1, 0.3, "expm1");
             }
-            #[test] fn op_sqrt_cbrt() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_sqrt, 4.0, "sqrt"); check_1d(&ctx, f_cbrt, 8.0, "cbrt");
+            #[test]
+            fn op_sqrt_cbrt() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_sqrt, 4.0, "sqrt");
+                check_1d(&ctx, f_cbrt, 8.0, "cbrt");
             }
-            #[test] fn op_sin_cos() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_sin, 1.0, "sin"); check_1d(&ctx, f_cos, 1.0, "cos");
+            #[test]
+            fn op_sin_cos() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_sin, 1.0, "sin");
+                check_1d(&ctx, f_cos, 1.0, "cos");
             }
-            #[test] fn op_tan() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
+            #[test]
+            fn op_tan() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
                 check_1d(&ctx, f_tan, 0.5, "tan");
             }
-            #[test] fn op_hyperbolic() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_sinh, 1.0, "sinh"); check_1d(&ctx, f_cosh, 1.0, "cosh");
+            #[test]
+            fn op_hyperbolic() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_sinh, 1.0, "sinh");
+                check_1d(&ctx, f_cosh, 1.0, "cosh");
                 check_1d(&ctx, f_tanh, 0.5, "tanh");
             }
-            #[test] fn op_inverse_trig() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_asin, 0.5, "asin"); check_1d(&ctx, f_acos, 0.5, "acos");
+            #[test]
+            fn op_inverse_trig() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_asin, 0.5, "asin");
+                check_1d(&ctx, f_acos, 0.5, "acos");
                 check_1d(&ctx, f_atan, 1.0, "atan");
             }
-            #[test] fn op_inverse_hyp() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_asinh, 1.0, "asinh"); check_1d(&ctx, f_acosh, 2.0, "acosh");
+            #[test]
+            fn op_inverse_hyp() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_asinh, 1.0, "asinh");
+                check_1d(&ctx, f_acosh, 2.0, "acosh");
                 check_1d(&ctx, f_atanh, 0.5, "atanh");
             }
-            #[test] fn op_pow() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_powf25, 2.0, "powf"); check_1d(&ctx, f_powi3, 2.0, "powi");
+            #[test]
+            fn op_pow() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_powf25, 2.0, "powf");
+                check_1d(&ctx, f_powi3, 2.0, "powi");
             }
-            #[test] fn op_arithmetic() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
+            #[test]
+            fn op_arithmetic() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
                 check_1d(&ctx, f_arith, 1.5, "arith");
             }
-            #[test] fn op_div() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
+            #[test]
+            fn op_div() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
                 check_1d(&ctx, f_div, 2.0, "div");
             }
-            #[test] fn op_nonsmooth() {
-                let ctx = match get_ctx() { Some(c) => c, None => return };
-                check_1d(&ctx, f_abs_fn, -2.0, "abs_neg"); check_1d(&ctx, f_abs_fn, 2.0, "abs_pos");
+            #[test]
+            fn op_nonsmooth() {
+                let ctx = match get_ctx() {
+                    Some(c) => c,
+                    None => return,
+                };
+                check_1d(&ctx, f_abs_fn, -2.0, "abs_neg");
+                check_1d(&ctx, f_abs_fn, 2.0, "abs_pos");
             }
         }
     };

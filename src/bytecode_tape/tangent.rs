@@ -21,8 +21,7 @@ impl<F: Float> super::BytecodeTape<F> {
     /// to match the tangent inputs, the custom-op linearization point will be
     /// stale, producing O(||x - x_record||) errors in the tangent output.
     /// For exact derivatives through custom ops, use the `Dual<F>` specialization
-    /// [`forward_tangent_dual`](Self::forward_tangent_dual) which calls
-    /// [`CustomOp::eval_dual`].
+    /// `forward_tangent_dual` which calls `CustomOp::eval_dual`.
     pub fn forward_tangent<T: NumFloat>(&self, inputs: &[T], buf: &mut Vec<T>) {
         self.forward_tangent_inner(inputs, buf, |i, a_t, b_t| {
             // First-order chain rule: evaluate on primals, convert partials to T.

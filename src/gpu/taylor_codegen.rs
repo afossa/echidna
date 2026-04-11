@@ -663,8 +663,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                let b = jet_load(j_base + b_idx * K);").unwrap();
     writeln!(s, "                if a.v[0] <= 0.0 {{").unwrap();
     writeln!(s, "                    let val = pow(a.v[0], b.v[0]);").unwrap();
-    writeln!(s, "                    let da = b.v[0] * pow(a.v[0], b.v[0] - 1.0);").unwrap();
-    writeln!(s, "                    let db = select(val * log(abs(a.v[0])), 0.0, val == 0.0);").unwrap();
+    writeln!(
+        s,
+        "                    let da = b.v[0] * pow(a.v[0], b.v[0] - 1.0);"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "                    let db = select(val * log(abs(a.v[0])), 0.0, val == 0.0);"
+    )
+    .unwrap();
     writeln!(s, "                    r.v[0] = val;").unwrap();
     writeln!(s, "                    r.v[1] = da * a.v[1] + db * b.v[1];").unwrap();
     for i in 2..k {
@@ -745,7 +753,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         writeln!(s, "                    r.v[{i}] = 1.0 / 0.0;").unwrap();
     }
     writeln!(s, "                }} else {{").unwrap();
-    writeln!(s, "                    let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);").unwrap();
+    writeln!(
+        s,
+        "                    let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);"
+    )
+    .unwrap();
     write!(
         s,
         "                    var abs_a: JetK;\n                    abs_a.v[0] = abs(a.v[0]);\n"
@@ -755,7 +767,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         writeln!(s, "                    abs_a.v[{i}] = sg * a.v[{i}];").unwrap();
     }
     writeln!(s, "                    let lna = jet_ln(abs_a);").unwrap();
-    writeln!(s, "                    let third = jet_scale(lna, 1.0 / 3.0);").unwrap();
+    writeln!(
+        s,
+        "                    let third = jet_scale(lna, 1.0 / 3.0);"
+    )
+    .unwrap();
     writeln!(s, "                    let e = jet_exp(third);").unwrap();
     writeln!(s, "                    r.v[0] = sg * e.v[0];").unwrap();
     for i in 1..k {
@@ -773,9 +789,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                }} else if n == 1.0 {{").unwrap();
     writeln!(s, "                    r = a;").unwrap();
     writeln!(s, "                }} else if a.v[0] < 0.0 {{").unwrap();
-    writeln!(s, "                    let sf = select(1.0, -1.0, ni % 2 != 0);").unwrap();
-    writeln!(s, "                    let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);").unwrap();
-    write!(s, "                    var abs_a: JetK;\n                    abs_a.v[0] = abs(a.v[0]);\n").unwrap();
+    writeln!(
+        s,
+        "                    let sf = select(1.0, -1.0, ni % 2 != 0);"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "                    let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);"
+    )
+    .unwrap();
+    write!(
+        s,
+        "                    var abs_a: JetK;\n                    abs_a.v[0] = abs(a.v[0]);\n"
+    )
+    .unwrap();
     for i in 1..k {
         writeln!(s, "                    abs_a.v[{i}] = sg * a.v[{i}];").unwrap();
     }
@@ -1424,11 +1452,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        case 6: {{").unwrap();
     writeln!(s, "            F b_val = jets[j_base + b_idx * K];").unwrap();
     writeln!(s, "            r = a;").unwrap();
-    writeln!(
-        s,
-        "            r.v[0] = fmod(a.v[0], b_val); break;"
-    )
-    .unwrap();
+    writeln!(s, "            r.v[0] = fmod(a.v[0], b_val); break;").unwrap();
     writeln!(s, "        }}").unwrap();
 
     // POWF — guard a<=0 (ln(a) is NaN/Inf)
@@ -1443,8 +1467,16 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     }
     writeln!(s, "            if (a.v[0] <= F(0)) {{").unwrap();
     writeln!(s, "                F val = pow(a.v[0], b.v[0]);").unwrap();
-    writeln!(s, "                F da = b.v[0] * pow(a.v[0], b.v[0] - F(1));").unwrap();
-    writeln!(s, "                F db = (val == F(0)) ? F(0) : val * log(fabs(a.v[0]));").unwrap();
+    writeln!(
+        s,
+        "                F da = b.v[0] * pow(a.v[0], b.v[0] - F(1));"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "                F db = (val == F(0)) ? F(0) : val * log(fabs(a.v[0]));"
+    )
+    .unwrap();
     writeln!(s, "                r.v[0] = val;").unwrap();
     if k > 1 {
         writeln!(s, "                r.v[1] = da * a.v[1] + db * b.v[1];").unwrap();
@@ -1570,7 +1602,11 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     for i in 1..k {
         writeln!(s, "                abs_a.v[{i}] = sg * a.v[{i}];").unwrap();
     }
-    writeln!(s, "                JetK e = jet_exp(jet_scale(jet_ln(abs_a), n));").unwrap();
+    writeln!(
+        s,
+        "                JetK e = jet_exp(jet_scale(jet_ln(abs_a), n));"
+    )
+    .unwrap();
     for i in 0..k {
         writeln!(s, "                r.v[{i}] = sf * e.v[{i}];").unwrap();
     }
