@@ -109,20 +109,50 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     /// Integer power.
     #[inline]
     pub fn powi(self, n: i32) -> Self {
+        if n == 0 {
+            return DualVec {
+                re: F::one(),
+                eps: [F::zero(); N],
+            };
+        }
         let val = self.re.powi(n);
-        let deriv = F::from(n).unwrap() * self.re.powf(F::from(n as i64 - 1).unwrap());
+        let deriv = if n == i32::MIN {
+            F::from(n).unwrap() * self.re.powf(F::from(n as i64 - 1).unwrap())
+        } else {
+            F::from(n).unwrap() * self.re.powi(n - 1)
+        };
         self.chain(val, deriv)
     }
 
     /// Floating-point power.
     #[inline]
     pub fn powf(self, n: Self) -> Self {
+        if n.re == F::zero() {
+            // a^0 = 1, d/da(a^0) = 0, d/db(a^b)|_{b=0} = ln(a) (for a > 0)
+            let dy = if self.re > F::zero() {
+                self.re.ln()
+            } else {
+                F::zero()
+            };
+            return DualVec {
+                re: F::one(),
+                eps: std::array::from_fn(|k| dy * n.eps[k]),
+            };
+        }
         let val = self.re.powf(n.re);
+        let dx_factor = if self.re == F::zero() {
+            n.re * self.re.powf(n.re - F::one())
+        } else {
+            n.re * val / self.re
+        };
+        let dy_factor = if val == F::zero() {
+            F::zero()
+        } else {
+            val * self.re.ln()
+        };
         DualVec {
             re: val,
-            eps: std::array::from_fn(|k| {
-                val * (n.re * self.eps[k] / self.re + n.eps[k] * self.re.ln())
-            }),
+            eps: std::array::from_fn(|k| dx_factor * self.eps[k] + dy_factor * n.eps[k]),
         }
     }
 
@@ -243,6 +273,12 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     #[inline]
     pub fn atan2(self, other: Self) -> Self {
         let denom = self.re * self.re + other.re * other.re;
+        if denom == F::zero() {
+            return DualVec {
+                re: self.re.atan2(other.re),
+                eps: [F::zero(); N],
+            };
+        }
         DualVec {
             re: self.re.atan2(other.re),
             eps: std::array::from_fn(|k| (other.re * self.eps[k] - self.re * other.eps[k]) / denom),
@@ -382,7 +418,7 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     /// Maximum of two values.
     #[inline]
     pub fn max(self, other: Self) -> Self {
-        if self.re >= other.re {
+        if self.re >= other.re || other.re.is_nan() {
             self
         } else {
             other
@@ -392,7 +428,7 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     /// Minimum of two values.
     #[inline]
     pub fn min(self, other: Self) -> Self {
-        if self.re <= other.re {
+        if self.re <= other.re || other.re.is_nan() {
             self
         } else {
             other

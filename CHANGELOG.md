@@ -11,6 +11,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **simba traits for DualVec**: implemented traits `SimdValue`, `PrimitiveSimdValue`, `SubsetOf`, `AbsDiffEq`, `RelativeEq`, `UlpsEq`, `Field`, `ComplexField`, `RealField` for `DualVec<F, N>`.
 
+## [0.7.0] - 2026-04-11
+
+### Added
+
+- **CUDA kth-order Taylor evaluation**: `CudaContext::taylor_forward_kth_batch` and `taylor_forward_kth_batch_f64` support K=1..5 Taylor jet evaluation, bringing CUDA to parity with wgpu. Kernels are lazy-compiled on first use via `taylor_codegen::generate_taylor_cuda`.
+- **`taylor_forward_kth_batch` on `GpuBackend` trait**: promoted from inherent method to trait method, enabling generic GPU STDE code to use arbitrary-order Taylor evaluation on either backend.
+- **`taylor_forward_2nd_batch` default trait impl**: delegates to `taylor_forward_kth_batch(order=3)`, eliminating duplicated logic across both backends.
+- **CUDA Taylor opcode test parity**: `gpu_stde.rs` refactored with `opcode_tests_for_backend!` macro to run all per-opcode Taylor tests on both wgpu and CUDA.
+
+### Removed
+
+- **Handwritten `taylor_eval.cu`** (527 lines): replaced by codegen K=3 output. The CUDA backend now uses `taylor_codegen::generate_taylor_cuda` for all Taylor kernels.
+- **Handwritten `taylor_forward_2nd.wgsl`** (570 lines): replaced by codegen K=3 output. The wgpu backend now uses `taylor_codegen::generate_taylor_wgsl` for all Taylor shaders.
+- **`cuda_taylor_fwd_2nd_body!` macro**: no longer needed since `taylor_forward_2nd_batch` delegates to the kth-order path.
+
+### Changed
+
+- **`TrustRegionConfig`** (echidna-optim): new `min_radius: F` field added in 0.6.0 (breaking for direct struct construction; `Default` impls provide it).
+
+## [0.6.0] - 2026-04-11
+
+### Fixed
+
+#### Core AD (all modes: Dual, DualVec, Reverse, BReverse, bytecode tape)
+- **Max/Min NaN handling**: `BReverse::max/min` and bytecode `eval_forward`/`reverse_partials` now return the non-NaN argument when one input is NaN, matching `Float::max`/`Float::min` semantics and the behavior of Dual/Reverse modes.
+- **atan2(0,0) derivative**: returns zero gradient (matching JAX/PyTorch convention) instead of NaN from division by zero in `x²+y²`.
+- **powf(x, 0) derivative**: correctly returns `d/db = ln(x)` for `x > 0` instead of silently dropping the exponent derivative. `d/da = 0` was already correct.
+- **powf(x, y) at x=0**: Reverse and bytecode modes now use the `y * x^(y-1)` form (matching Dual) instead of `y * val / x` which produces `0/0 = NaN`.
+- **powi_exp_decode**: deleted broken generic float round-trip decoder (failed for f32 negative exponents); replaced with `powi_exp_decode_raw` at both call sites.
+
+#### Taylor / Laurent series
+- **Taylor abs(0)**: `Taylor::abs` and `TaylorDyn::abs` now use the first nonzero coefficient's sign instead of `signum(+0.0) = 0`, preventing the entire jet from being annihilated.
+- **taylor_cbrt at zero**: returns `[0, Inf, ...]` (signaling the vertical tangent) instead of NaN from `ln(0)`.
+- **taylor_sqrt at zero**: runtime guard returns `[0, Inf, ...]` instead of silent `Inf/NaN` from division by `2*sqrt(0)`.
+- **Laurent Add/Sub truncation**: promoted from `debug_assert` to `assert!` — silent coefficient loss when pole-order gap exceeds `K-1` is now caught at runtime.
+
+#### Bytecode tape
+- **Checkpoint thinning**: online checkpoint thinning now maintains uniform spacing after doubling (`skip(1).step_by(2)` instead of `step_by(2)`), fixing O(N) recomputation degradation for small checkpoint budgets.
+- **Abs sparse Hessian**: reclassified from `UnaryNonlinear` to `ZeroDerivative` — `d²|x|/dx² = 0` a.e., reducing spurious Hessian sparsity pattern entries.
+- Added `debug_assert` for tape variable count overflow (`u32::MAX`) and contiguous input opcodes.
+
+#### GPU Taylor kernels (CUDA + wgpu, codegen)
+- **POWI negative bases**: GPU Taylor mode now handles negative bases via `sign(a)^n * exp(n * ln(|a|))` instead of `exp(n * ln(a))` which produced NaN for `ln(negative)`.
+- **POWF at a≤0**: added first-order chain-rule fallback when `a ≤ 0` (where `ln(a)` is undefined).
+- **REM Taylor coefficients**: `c1`/`c2` now pass through `a`'s jet (`d(a%b)/da = 1` a.e.) instead of being zeroed.
+- **`_sign` in taylor_eval.cu**: now matches `tape_eval.cu` — returns `1` for `+0.0` and `NaN` for `NaN` (Rust `signum` semantics).
+- **ATAN2 at b=0**: uses direct derivative formula instead of `jet_div(a, b)` which divided by zero.
+- **CBRT at a=0**: returns `[0, Inf, ...]` instead of NaN from `ln(0)`.
+- **wgpu expm1/ln1p**: polynomial approximation for `|x| < 1e-4` to avoid catastrophic cancellation.
+
+#### echidna-optim
+- **Trust-region min radius**: added `min_radius` field to `TrustRegionConfig` (default `F::epsilon()`), preventing silent stall from geometric radius collapse.
+- **boundary_tau zero direction**: guards `||d||² < epsilon` to prevent NaN from degenerate CG directions.
+- **LU singularity threshold**: changed from hardcoded `1e-12` to `F::epsilon().sqrt()`, fixing false negatives for f32 near-singular matrices.
+- **Piggyback adjoint**: extra reverse pass with converged `lambda_new` eliminates O(tol × ||G_x||) error in parameter gradients.
+- **Weighted STDE**: `estimate_weighted` skips zero-weight samples to prevent division by zero in West's algorithm.
+- **Welford accumulator**: `debug_assert!(sample.is_finite())` catches NaN/Inf inputs in debug builds.
+
+### Changed
+
+- **GPU STDE test parity**: refactored `tests/gpu_stde.rs` to use a generic `opcode_tests_for_backend!` macro, running all per-opcode Taylor tests on both wgpu and CUDA backends instead of wgpu-only.
+- **`TrustRegionConfig`**: added `min_radius: F` field (breaking change for direct struct construction; `Default` impls updated).
+
 ## [0.5.0] - 2026-03-14
 
 ### Added

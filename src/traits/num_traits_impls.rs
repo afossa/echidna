@@ -643,15 +643,39 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
     }
 
     fn powi(self, n: i32) -> Self {
+        if n == 0 {
+            return rev_unary(self, F::one(), F::zero());
+        }
         let val = self.value.powi(n);
-        let deriv = F::from(n).unwrap() * self.value.powf(F::from(n as i64 - 1).unwrap());
+        let deriv = if n == i32::MIN {
+            F::from(n).unwrap() * self.value.powf(F::from(n as i64 - 1).unwrap())
+        } else {
+            F::from(n).unwrap() * self.value.powi(n - 1)
+        };
         rev_unary(self, val, deriv)
     }
 
     fn powf(self, n: Self) -> Self {
+        if n.value == F::zero() {
+            // a^0 = 1, d/da(a^0) = 0, d/db(a^b)|_{b=0} = ln(a) (for a > 0)
+            let dy = if self.value > F::zero() {
+                self.value.ln()
+            } else {
+                F::zero()
+            };
+            return rev_binary(self, n, F::one(), F::zero(), dy);
+        }
         let val = self.value.powf(n.value);
-        let dx = n.value * self.value.powf(n.value - F::one());
-        let dy = val * self.value.ln();
+        let dx = if self.value == F::zero() {
+            n.value * self.value.powf(n.value - F::one())
+        } else {
+            n.value * val / self.value
+        };
+        let dy = if val == F::zero() {
+            F::zero() // lim_{x→0+} x^y * ln(x) = 0 for y > 0
+        } else {
+            val * self.value.ln()
+        };
         rev_binary(self, n, val, dx, dy)
     }
 
@@ -718,6 +742,9 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
         rev_unary(self, self.value.tan(), F::one() / (c * c))
     }
 
+    // NOTE (verified correct): Two `rev_unary` calls for sin/cos are correct.
+    // Each output gets its own tape index; adjoints accumulate independently
+    // through both entries back to `self.index`.
     fn sin_cos(self) -> (Self, Self) {
         let (s, c) = self.value.sin_cos();
         (rev_unary(self, s, c), rev_unary(self, c, -s))
@@ -749,6 +776,9 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
 
     fn atan2(self, other: Self) -> Self {
         let denom = self.value * self.value + other.value * other.value;
+        if denom == F::zero() {
+            return Reverse::constant(self.value.atan2(other.value));
+        }
         let dx = other.value / denom;
         let dy = -self.value / denom;
         rev_binary(self, other, self.value.atan2(other.value), dx, dy)
@@ -802,8 +832,7 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
     }
 
     fn max(self, other: Self) -> Self {
-        if self.value >= other.value {
-            // Propagate self's derivative.
+        if self.value >= other.value || other.value.is_nan() {
             rev_unary(self, self.value, F::one())
         } else {
             rev_unary(other, other.value, F::one())
@@ -811,7 +840,7 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
     }
 
     fn min(self, other: Self) -> Self {
-        if self.value <= other.value {
+        if self.value <= other.value || other.value.is_nan() {
             rev_unary(self, self.value, F::one())
         } else {
             rev_unary(other, other.value, F::one())
