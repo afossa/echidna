@@ -159,8 +159,10 @@ pub fn grad_checkpointed_online<F: Float + BtapeThreadLocal>(
 
         // Thin when buffer is full.
         if buffer.len() >= num_checkpoints {
-            // Keep buffer[0] (pinned). Among buffer[1..], keep even-indexed entries.
-            let tail: Vec<(usize, Vec<F>)> = buffer[1..].iter().step_by(2).cloned().collect();
+            // Keep buffer[0] (pinned). Among buffer[1..], skip the first (closest to
+            // buffer[0]) and keep every other entry to maintain uniform spacing.
+            let tail: Vec<(usize, Vec<F>)> =
+                buffer[1..].iter().skip(1).step_by(2).cloned().collect();
             buffer.truncate(1);
             buffer.extend(tail);
             spacing *= 2;
@@ -636,6 +638,10 @@ fn optimal_advance(steps: usize, c: usize) -> usize {
 ///
 /// Represents the maximum number of steps that can be reversed with
 /// `s` forward recomputations and `c` checkpoint slots.
+///
+/// Returns `usize::MAX` on overflow rather than using `saturating_mul` followed
+/// by division (which can produce incorrect intermediate results when the
+/// multiplication saturates but the final result would fit in a `usize`).
 fn beta(s: usize, c: usize) -> usize {
     if c == 0 {
         return s + 1;
@@ -643,11 +649,17 @@ fn beta(s: usize, c: usize) -> usize {
     if s == 0 {
         return 1;
     }
-    // C(s+c, c) via multiplicative formula to avoid overflow
+    // C(s+c, c) via multiplicative formula, with overflow detection.
+    // Interleave multiply/divide to keep intermediates small.
     let mut result = 1usize;
     for i in 0..c {
-        result = result.saturating_mul(s + c - i);
-        result /= i + 1;
+        // Check for overflow before multiplying
+        let factor = s + c - i;
+        let divisor = i + 1;
+        match result.checked_mul(factor) {
+            Some(v) => result = v / divisor,
+            None => return usize::MAX, // overflow → certainly >= any practical step count
+        }
     }
     result
 }

@@ -12,6 +12,16 @@ impl<F: Float> super::BytecodeTape<F> {
     ///
     /// Generic over `T: NumFloat` so it works with both `Dual<F>` and
     /// `DualVec<F, N>`.
+    ///
+    /// # Custom-op accuracy
+    ///
+    /// Custom operations use recording-time primals (`self.values`) for their
+    /// first-order linearization. If the tape has been re-evaluated at different
+    /// inputs via [`forward()`](Self::forward) but `self.values` was not updated
+    /// to match the tangent inputs, the custom-op linearization point will be
+    /// stale, producing O(||x - x_record||) errors in the tangent output.
+    /// For exact derivatives through custom ops, use the `Dual<F>` specialization
+    /// `forward_tangent_dual` which calls `CustomOp::eval_dual`.
     pub fn forward_tangent<T: NumFloat>(&self, inputs: &[T], buf: &mut Vec<T>) {
         self.forward_tangent_inner(inputs, buf, |i, a_t, b_t| {
             // First-order chain rule: evaluate on primals, convert partials to T.
@@ -99,6 +109,9 @@ impl<F: Float> super::BytecodeTape<F> {
     /// Reverse sweep with tangent-carrying adjoints. Uses values from
     /// [`forward_tangent`](Self::forward_tangent). Uses [`IsAllZero`] to
     /// safely skip zero adjoints without dropping tangent contributions.
+    ///
+    /// See [`forward_tangent`](Self::forward_tangent) for custom-op accuracy
+    /// caveats — the same recording-time primal limitation applies here.
     pub(super) fn reverse_tangent<T: NumFloat + IsAllZero>(
         &self,
         tangent_vals: &[T],
@@ -175,8 +188,15 @@ impl<F: Float> super::BytecodeTape<F> {
                     let a = tangent_vals[a_idx as usize];
                     if op == OpCode::Powi {
                         let exp = opcode::powi_exp_decode_raw(b_idx);
-                        let n = T::from(exp).unwrap();
-                        let da = n * a.powi(exp - 1);
+                        let da = if exp == 0 {
+                            T::zero()
+                        } else if exp == i32::MIN {
+                            let n = T::from(exp).unwrap();
+                            n * a.powf(T::from(exp as i64 - 1).unwrap())
+                        } else {
+                            let n = T::from(exp).unwrap();
+                            n * a.powi(exp - 1)
+                        };
                         buf[a_idx as usize] = buf[a_idx as usize] + da * adj;
                         continue;
                     }
@@ -295,6 +315,11 @@ impl<F: Float> super::BytecodeTape<F> {
     ///
     /// Processes `ceil(n/N)` batches instead of `n` individual HVPs,
     /// computing N Hessian columns simultaneously.
+    ///
+    /// **Custom ops limitation:** For tapes containing custom ops, this method
+    /// uses first-order chain rule (linearized partials). For exact second-order
+    /// derivatives through custom ops, use `hessian` instead, which calls
+    /// `CustomOp::eval_dual` / `CustomOp::partials_dual`.
     pub fn hessian_vec<const N: usize>(&self, x: &[F]) -> (F, Vec<F>, Vec<Vec<F>>) {
         let n = self.num_inputs as usize;
         assert_eq!(x.len(), n, "wrong number of inputs");

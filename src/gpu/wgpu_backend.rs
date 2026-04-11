@@ -25,7 +25,6 @@ pub struct WgpuContext {
     reverse_pipeline: wgpu::ComputePipeline,
     tangent_fwd_pipeline: wgpu::ComputePipeline,
     tangent_rev_pipeline: wgpu::ComputePipeline,
-    taylor_fwd_2nd_pipeline: wgpu::ComputePipeline,
     /// K-specialized Taylor forward pipelines for K=1..5 (index = K-1).
     #[cfg(feature = "stde")]
     taylor_fwd_kth_pipelines: [wgpu::ComputePipeline; 5],
@@ -251,24 +250,8 @@ impl WgpuContext {
             immediate_size: 0,
         });
 
-        let taylor2_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("echidna_taylor_fwd_2nd_shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/taylor_forward_2nd.wgsl").into(),
-            ),
-        });
-
-        let taylor_fwd_2nd_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("echidna_taylor_fwd_2nd_pipeline"),
-                layout: Some(&taylor2_layout),
-                module: &taylor2_shader,
-                entry_point: Some("main"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
-
         // Compile K-specialized Taylor forward pipelines for K=1..5
+        // (replaces the former handwritten taylor_forward_2nd.wgsl shader)
         #[cfg(feature = "stde")]
         let taylor_fwd_kth_pipelines = {
             use super::taylor_codegen::generate_taylor_wgsl;
@@ -297,7 +280,6 @@ impl WgpuContext {
             reverse_pipeline,
             tangent_fwd_pipeline,
             tangent_rev_pipeline,
-            taylor_fwd_2nd_pipeline,
             #[cfg(feature = "stde")]
             taylor_fwd_kth_pipelines,
             tape_bind_group_layout,
@@ -650,7 +632,7 @@ impl GpuBackend for WgpuContext {
             });
 
         // Values buffer: B * num_variables (working memory per thread)
-        let values_size = (batch_size * num_variables) as u64 * 4;
+        let values_size = (batch_size as u64) * (num_variables as u64) * 4;
         let values_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("values"),
             size: values_size,
@@ -659,7 +641,7 @@ impl GpuBackend for WgpuContext {
         });
 
         // Output buffer: B * num_outputs
-        let output_size = (batch_size * num_outputs) as u64 * 4;
+        let output_size = (batch_size as u64) * (num_outputs as u64) * 4;
         let output_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("outputs"),
             size: output_size,
@@ -794,7 +776,7 @@ impl GpuBackend for WgpuContext {
             });
 
         // Values buffer: B * num_variables (shared between forward and reverse)
-        let values_size = (batch_size * num_variables) as u64 * 4;
+        let values_size = (batch_size as u64) * (num_variables as u64) * 4;
         let values_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("values"),
             size: values_size,
@@ -803,7 +785,7 @@ impl GpuBackend for WgpuContext {
         });
 
         // Output buffer: B * num_outputs
-        let output_count = (batch_size * num_outputs) as u64;
+        let output_count = (batch_size as u64) * (num_outputs as u64);
         let output_size = output_count * 4;
         let output_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("outputs"),
@@ -821,7 +803,7 @@ impl GpuBackend for WgpuContext {
         });
 
         // Gradient output buffer: B * num_inputs
-        let grad_count = (batch_size * num_inputs) as u64;
+        let grad_count = (batch_size as u64) * (num_inputs as u64);
         let grad_size = grad_count * 4;
         let grad_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("grad_out"),
@@ -1042,7 +1024,7 @@ impl GpuBackend for WgpuContext {
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
-        let buf_size = (batch * num_variables) as u64 * 4;
+        let buf_size = (batch as u64) * (num_variables as u64) * 4;
         let primals_work = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("primals_work"),
             size: buf_size,
@@ -1056,7 +1038,7 @@ impl GpuBackend for WgpuContext {
             mapped_at_creation: false,
         });
 
-        let out_size = (batch * tape.num_outputs) as u64 * 4;
+        let out_size = (batch as u64) * (tape.num_outputs as u64) * 4;
         let tangent_out_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("tangent_outputs"),
             size: out_size,
@@ -1215,8 +1197,8 @@ impl GpuBackend for WgpuContext {
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
-        let buf_size = (batch_size * nv) as u64 * 4;
-        let grad_size = (batch_size * ni) as u64 * 4;
+        let buf_size = (batch_size as u64) * (nv as u64) * 4;
+        let grad_size = (batch_size as u64) * (ni as u64) * 4;
 
         let primals_work = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("pw"),
@@ -1421,167 +1403,19 @@ impl GpuBackend for WgpuContext {
     }
 
     #[cfg(feature = "stde")]
-    fn taylor_forward_2nd_batch(
+    fn taylor_forward_kth_batch(
         &self,
         tape: &WgpuTapeBuffers,
         primal_inputs: &[f32],
         direction_seeds: &[f32],
         batch_size: u32,
-    ) -> Result<super::TaylorBatchResult<f32>, GpuError> {
-        use wgpu::util::DeviceExt;
-
-        let ni = tape.num_inputs;
-        let nv = tape.num_variables;
-        let no = tape.num_outputs;
-        let total_inputs = (batch_size * ni) as usize;
-
-        assert_eq!(
-            primal_inputs.len(),
-            total_inputs,
-            "primal_inputs length mismatch"
-        );
-        assert_eq!(
-            direction_seeds.len(),
-            total_inputs,
-            "direction_seeds length mismatch"
-        );
-
-        let meta = TapeMeta {
-            num_ops: tape.num_ops,
-            num_inputs: ni,
-            num_variables: nv,
-            num_outputs: no,
-            batch_size,
-            _pad: [0; 3],
-        };
-        let meta_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("taylor2_meta"),
-                contents: bytemuck::bytes_of(&meta),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
-
-        let primal_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("taylor2_primals"),
-                contents: bytemuck::cast_slice(primal_inputs),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-        let seed_buf = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("taylor2_seeds"),
-                contents: bytemuck::cast_slice(direction_seeds),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
-
-        // Jets working buffer: B * nv * 3 floats
-        let jets_size = (batch_size as u64) * (nv as u64) * 3 * 4;
-        let jets_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("taylor2_jets"),
-            size: jets_size,
-            usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        // Jet outputs: B * n_out * 3 floats (interleaved c0,c1,c2)
-        let out_count = (batch_size as u64) * (no as u64) * 3;
-        let out_size = out_count * 4;
-        let jet_out_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("taylor2_jet_out"),
-            size: out_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: false,
-        });
-
-        let staging_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("taylor2_staging"),
-            size: out_size,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let tape_bg = self.create_tape_bind_group(tape, &meta_buf);
-
-        let io_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("taylor2_io_bg"),
-            layout: &self.taylor_fwd_2nd_io_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: primal_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: seed_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: jets_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: jet_out_buf.as_entire_binding(),
-                },
-            ],
-        });
-
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("taylor2_enc"),
-            });
-
-        {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("taylor2_pass"),
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(&self.taylor_fwd_2nd_pipeline);
-            pass.set_bind_group(0, &tape_bg, &[]);
-            pass.set_bind_group(1, &io_bg, &[]);
-            pass.dispatch_workgroups(batch_size.div_ceil(256), 1, 1);
-        }
-
-        encoder.copy_buffer_to_buffer(&jet_out_buf, 0, &staging_buf, 0, out_size);
-        let sub_idx = self.queue.submit(std::iter::once(encoder.finish()));
-
-        let slice = staging_buf.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        let _ = self.device.poll(wgpu::PollType::Wait {
-            submission_index: Some(sub_idx),
-            timeout: None,
-        });
-
-        rx.recv()
-            .map_err(|e| GpuError::Other(format!("channel recv failed: {e}")))?
-            .map_err(|e| GpuError::Other(format!("buffer map failed: {e}")))?;
-
-        let data = slice.get_mapped_range();
-        let raw: &[f32] = bytemuck::cast_slice(&data);
-
-        // Deinterleave: raw is [c0_0, c1_0, c2_0, c0_1, c1_1, c2_1, ...] per batch×output
-        let total_out = (batch_size * no) as usize;
-        let mut values = Vec::with_capacity(total_out);
-        let mut c1s = Vec::with_capacity(total_out);
-        let mut c2s = Vec::with_capacity(total_out);
-
-        for i in 0..total_out {
-            values.push(raw[i * 3]);
-            c1s.push(raw[i * 3 + 1]);
-            c2s.push(raw[i * 3 + 2]);
-        }
-
-        drop(data);
-        staging_buf.unmap();
-
-        Ok(super::TaylorBatchResult { values, c1s, c2s })
+        order: usize,
+    ) -> Result<super::TaylorKthBatchResult<f32>, GpuError> {
+        // Delegate to the inherent method
+        self.taylor_forward_kth_batch(tape, primal_inputs, direction_seeds, batch_size, order)
     }
+
+    // taylor_forward_2nd_batch: uses default trait impl (delegates to kth_batch(order=3))
 }
 
 // ── Helpers ──
