@@ -434,4 +434,16 @@ impl<F: Float, const N: usize> DualVec<F, N> {
             other
         }
     }
+
+    /// Smallest finite value that this type can represent.
+    #[inline]
+    pub fn min_value() -> Self {
+        Self::constant(F::min_value())
+    }
+
+    /// Largest finite value that this type can represent.
+    #[inline]
+    pub fn max_value() -> Self {
+        Self::constant(F::max_value())
+    }
 }

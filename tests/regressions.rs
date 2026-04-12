@@ -463,7 +463,7 @@ mod phase1c_sparsity {
 
     #[test]
     fn sparsity_custom_binary_op() {
-        let (mut tape, _) = record(|x| x[0] * x[1] + x[0].sin(), &[1.0, 2.0]);
+        let (tape, _) = record(|x| x[0] * x[1] + x[0].sin(), &[1.0, 2.0]);
         let dense = tape.hessian(&[1.0, 2.0]);
         let (_, _, pattern, _sparse_vals) = tape.sparse_hessian(&[1.0, 2.0]);
 

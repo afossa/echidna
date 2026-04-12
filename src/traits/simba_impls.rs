@@ -9,7 +9,7 @@ use simba::simd::{PrimitiveSimdValue, SimdValue};
 
 use crate::dual::Dual;
 use crate::dual_vec::DualVec;
-use crate::float::Float;
+use crate::float::{Float, IsAllZero};
 use crate::reverse::Reverse;
 use crate::tape::TapeThreadLocal;
 
@@ -311,6 +311,75 @@ impl<const N: usize> SubsetOf<DualVec<f64, N>> for f32 {
     #[inline]
     fn is_in_subset(element: &DualVec<f64, N>) -> bool {
         element.eps.into_iter().all(|e| e == 0.0)
+    }
+}
+
+// f64 ⊂ DualVec<DualVec<f64, N>, M>  (lossless: f64 → constant dual vector)
+impl<const N: usize, const M: usize> SubsetOf<DualVec<DualVec<f64, N>, M>> for f64 {
+    #[inline]
+    fn to_superset(&self) -> DualVec<DualVec<f64, N>, M> {
+        DualVec::constant(DualVec::constant(*self))
+    }
+    #[inline]
+    fn from_superset_unchecked(element: &DualVec<DualVec<f64, N>, M>) -> Self {
+        element.re.re
+    }
+    #[inline]
+    fn is_in_subset(element: &DualVec<DualVec<f64, N>, M>) -> bool {
+        element.re.eps.into_iter().all(|e| e.is_all_zero())
+            && element.eps.into_iter().all(|e| e.is_all_zero())
+    }
+}
+
+// f32 ⊂ DualVec<DualVec<f32, N>, M>  (lossless: f32 → constant dual vector)
+impl<const N: usize, const M: usize> SubsetOf<DualVec<DualVec<f32, N>, M>> for f32 {
+    #[inline]
+    fn to_superset(&self) -> DualVec<DualVec<f32, N>, M> {
+        DualVec::constant(DualVec::constant(*self))
+    }
+    #[inline]
+    fn from_superset_unchecked(element: &DualVec<DualVec<f32, N>, M>) -> Self {
+        element.re.re
+    }
+    #[inline]
+    fn is_in_subset(element: &DualVec<DualVec<f32, N>, M>) -> bool {
+        element.re.eps.into_iter().all(|e| e.is_all_zero())
+            && element.eps.into_iter().all(|e| e.is_all_zero())
+    }
+}
+
+// f64 ⊂ DualVec<DualVec<f32, N>, M>  (lossy: f64 → f32 → constant dual vector)
+// Required by ComplexField: SupersetOf<f64>
+impl<const N: usize, const M: usize> SubsetOf<DualVec<DualVec<f32, N>, M>> for f64 {
+    #[inline]
+    fn to_superset(&self) -> DualVec<DualVec<f32, N>, M> {
+        DualVec::constant(DualVec::constant(*self as f32))
+    }
+    #[inline]
+    fn from_superset_unchecked(element: &DualVec<DualVec<f32, N>, M>) -> Self {
+        element.re.re as f64
+    }
+    #[inline]
+    fn is_in_subset(element: &DualVec<DualVec<f32, N>, M>) -> bool {
+        element.re.eps.into_iter().all(|e| e.is_all_zero())
+            && element.eps.into_iter().all(|e| e.is_all_zero())
+    }
+}
+
+// f32 ⊂ DualVec<DualVec<f64, N>, M>  (lossless: f32 → f64 → constant dual vector)
+impl<const N: usize, const M: usize> SubsetOf<DualVec<DualVec<f64, N>, M>> for f32 {
+    #[inline]
+    fn to_superset(&self) -> DualVec<DualVec<f64, N>, M> {
+        DualVec::constant(DualVec::constant(*self as f64))
+    }
+    #[inline]
+    fn from_superset_unchecked(element: &DualVec<DualVec<f64, N>, M>) -> Self {
+        element.re.re as f32
+    }
+    #[inline]
+    fn is_in_subset(element: &DualVec<DualVec<f64, N>, M>) -> bool {
+        element.re.eps.into_iter().all(|e| e.is_all_zero())
+            && element.eps.into_iter().all(|e| e.is_all_zero())
     }
 }
 
@@ -878,8 +947,8 @@ impl_real_field_dual!(f64);
 // duplication.
 
 macro_rules! impl_complex_field_dual_vec {
-    ($f:ty) => {
-        impl<const N: usize> ComplexField for DualVec<$f, N> {
+    ([$($extra:tt)*], $f:ty) => {
+        impl<$($extra)* const N: usize> ComplexField for DualVec<$f, N> {
             type RealField = Self;
 
             #[inline]
@@ -1082,16 +1151,18 @@ macro_rules! impl_complex_field_dual_vec {
     };
 }
 
-impl_complex_field_dual_vec!(f32);
-impl_complex_field_dual_vec!(f64);
+impl_complex_field_dual_vec!([], f32);
+impl_complex_field_dual_vec!([], f64);
+impl_complex_field_dual_vec!([const M: usize,], DualVec<f32, M>);
+impl_complex_field_dual_vec!([const M: usize,], DualVec<f64, M>);
 
 // ══════════════════════════════════════════════
 //  RealField for DualVec<F, N>
 // ══════════════════════════════════════════════
 
 macro_rules! impl_real_field_dual_vec {
-    ($f:ty) => {
-        impl<const N: usize> RealField for DualVec<$f, N> {
+    ([$($extra:tt)*], $f:ty) => {
+        impl<$($extra)* const N: usize> RealField for DualVec<$f, N> {
             #[inline]
             fn is_sign_positive(&self) -> bool {
                 self.re.is_sign_positive()
@@ -1122,11 +1193,11 @@ macro_rules! impl_real_field_dual_vec {
             }
             #[inline]
             fn min_value() -> Option<Self> {
-                Some(DualVec::constant(<$f>::MIN))
+                Some(DualVec::min_value())
             }
             #[inline]
             fn max_value() -> Option<Self> {
-                Some(DualVec::constant(<$f>::MAX))
+                Some(DualVec::max_value())
             }
 
             // ── Constants ──
@@ -1194,8 +1265,10 @@ macro_rules! impl_real_field_dual_vec {
     };
 }
 
-impl_real_field_dual_vec!(f32);
-impl_real_field_dual_vec!(f64);
+impl_real_field_dual_vec!([], f32);
+impl_real_field_dual_vec!([], f64);
+impl_real_field_dual_vec!([const M: usize,], DualVec<f32, M>);
+impl_real_field_dual_vec!([const M: usize,], DualVec<f64, M>);
 
 // ══════════════════════════════════════════════
 //  ComplexField for Reverse<F>
