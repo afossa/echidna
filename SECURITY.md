@@ -4,10 +4,12 @@
 
 | Version | Supported |
 |---------|-----------|
-| >= 0.8.0 | Yes       |
+| >= 0.8.2 | Yes       |
+| 0.8.1    | No — atan derivative overflow for large inputs; powf derivative underflow; WGSL u32 index overflow on large workloads; Revolve checkpoint exceeds memory budget |
+| 0.8.0    | No — GPU cbrt HVP second derivative is wrong; asin/acos/atanh lose precision near domain boundaries; CUDA Taylor codegen truncates 64-bit offsets |
 | < 0.8.0  | No        |
 
-Only the latest minor release receives security updates. Versions prior to 0.8.0 have known correctness bugs including: GPU Taylor coefficient errors for POWI at x=0, REM with non-constant divisors, POWF with negative base, and ATAN2 at b=0 for K>=3; silent NaN in Laurent max/min; piggyback forward-adjoint gradient bias; optimizer NaN non-detection; and trust region convergence issues.
+Only the latest patch release receives security updates. Version 0.8.1 has known numerical correctness bugs including: atan derivative silently returns 0 for |x| > 1.34e154; powf derivative silently returns 0 when x^b underflows; WGSL forward/reverse/hvp batch dispatch produces corrupted results when batch_size × num_variables > 2³²; Taylor max/min returns NaN instead of valid value; and Revolve checkpointing uses O(num_steps) memory instead of O(num_checkpoints). Versions prior to 0.8.0 have additional known issues documented in the changelog.
 
 ## Reporting a Vulnerability
 

@@ -210,9 +210,9 @@ fn modified_gram_schmidt<F: Float>(columns: &mut Vec<Vec<F>>, epsilon: F) -> usi
             for v in columns[i].iter_mut() {
                 *v = *v * inv_norm;
             }
-            // Move to rank position
-            // BUG-HUNT-NOTE: i == rank is a loop invariant (both start at 0, both increment on
-            // accept, neither changes on reject+swap_remove). This swap is defensive dead code.
+            // Move accepted column to rank position. Note: i == rank is a loop invariant
+            // (both start at 0, both increment on accept, neither changes on reject+swap_remove),
+            // so this swap is effectively a no-op. Kept as a defensive guard.
             if i != rank {
                 columns.swap(i, rank);
             }
@@ -271,7 +271,7 @@ pub fn laplacian_hutchpp<F: Float>(
 
     let n = tape.num_inputs();
     let two = F::from(2.0).unwrap();
-    let eps = F::from(1e-12).unwrap();
+    let eps = F::epsilon().sqrt();
 
     // ── Step 1: Sketch — k HVPs to get columns of H·S ──
     let mut dual_vals_buf = Vec::new();

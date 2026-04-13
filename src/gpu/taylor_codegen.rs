@@ -794,12 +794,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                    r = jet_const(1.0);").unwrap();
     writeln!(s, "                }} else if n == 1.0 {{").unwrap();
     writeln!(s, "                    r = a;").unwrap();
-    // a.v[0] == 0 with n>=2: 0^n = 0 and all Taylor coefficients are 0.
-    // For negative n (e.g. 0^-2 = Inf), fall through to exp-ln path which correctly produces Inf.
-    // CPU uses repeated squaring which can produce nonzero higher-order terms (e.g. (εt)^2=ε²t²),
-    // but the GPU jet_const(0) avoids the NaN from ln(0) and is correct for the primal.
-    writeln!(s, "                }} else if a.v[0] == 0.0 && ni >= 2 {{").unwrap();
-    writeln!(s, "                    r = jet_const(0.0);").unwrap();
+    // a.v[0] == 0 with small n>=2: use repeated jet multiplication to preserve
+    // higher-order Taylor coefficients (e.g., x^2 at x=0 has nonzero c2=v^2).
+    // For n>4 at zero, fall through to the a.v[0]<=0 path which handles via squaring.
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 2 {{").unwrap();
+    writeln!(s, "                    r = jet_mul(a, a);").unwrap();
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 3 {{").unwrap();
+    writeln!(s, "                    r = jet_mul(jet_mul(a, a), a);").unwrap();
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 4 {{").unwrap();
+    writeln!(
+        s,
+        "                    r = jet_mul(jet_mul(a, a), jet_mul(a, a));"
+    )
+    .unwrap();
     writeln!(s, "                }} else if a.v[0] <= 0.0 {{").unwrap();
     writeln!(
         s,
@@ -1414,7 +1421,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
 
     // Initialize
     writeln!(s, "    for (unsigned int i = 0; i < num_variables; i++) {{").unwrap();
-    writeln!(s, "        unsigned int off = j_base + i * K;").unwrap();
+    writeln!(s, "        unsigned long long off = j_base + i * K;").unwrap();
     writeln!(s, "        jets[off] = constants[i];").unwrap();
     for c in 1..k {
         writeln!(s, "        jets[off + {c}] = (F)0;").unwrap();
@@ -1428,7 +1435,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     )
     .unwrap();
     writeln!(s, "    for (unsigned int i = 0; i < num_inputs; i++) {{").unwrap();
-    writeln!(s, "        unsigned int off = j_base + i * K;").unwrap();
+    writeln!(s, "        unsigned long long off = j_base + i * K;").unwrap();
     writeln!(s, "        jets[off] = primal_inputs[in_base + i];").unwrap();
     if k > 1 {
         writeln!(s, "        jets[off + 1] = direction_seeds[in_base + i];").unwrap();
@@ -1448,7 +1455,11 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
 
     // Load a
     writeln!(s, "        JetK a;").unwrap();
-    writeln!(s, "        unsigned int a_off = j_base + a_idx * K;").unwrap();
+    writeln!(
+        s,
+        "        unsigned long long a_off = j_base + (unsigned long long)a_idx * K;"
+    )
+    .unwrap();
     for c in 0..k {
         writeln!(s, "        a.v[{c}] = jets[a_off + {c}];").unwrap();
     }
@@ -1467,7 +1478,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
         writeln!(s, "        case {case}: {{").unwrap();
         writeln!(
             s,
-            "            JetK b; unsigned int b_off = j_base + b_idx * K;"
+            "            JetK b; unsigned long long b_off = j_base + (unsigned long long)b_idx * K;"
         )
         .unwrap();
         for c in 0..k {
@@ -1481,7 +1492,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        case 6: {{").unwrap();
     writeln!(
         s,
-        "            JetK b; unsigned int b_off = j_base + b_idx * K;"
+        "            JetK b; unsigned long long b_off = j_base + (unsigned long long)b_idx * K;"
     )
     .unwrap();
     for c in 0..k {
@@ -1499,7 +1510,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        case 7: {{").unwrap();
     writeln!(
         s,
-        "            JetK b; unsigned int b_off = j_base + b_idx * K;"
+        "            JetK b; unsigned long long b_off = j_base + (unsigned long long)b_idx * K;"
     )
     .unwrap();
     for c in 0..k {
@@ -1539,7 +1550,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        case 8: {{").unwrap();
     writeln!(
         s,
-        "            JetK b; unsigned int b_off = j_base + b_idx * K;"
+        "            JetK b; unsigned long long b_off = j_base + (unsigned long long)b_idx * K;"
     )
     .unwrap();
     for c in 0..k {
@@ -1571,7 +1582,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        case 9: {{").unwrap();
     writeln!(
         s,
-        "            JetK b; unsigned int b_off = j_base + b_idx * K;"
+        "            JetK b; unsigned long long b_off = j_base + (unsigned long long)b_idx * K;"
     )
     .unwrap();
     for c in 0..k {
@@ -1594,7 +1605,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
         writeln!(s, "        case {case}: {{").unwrap();
         writeln!(
             s,
-            "            JetK b; unsigned int b_off = j_base + b_idx * K;"
+            "            JetK b; unsigned long long b_off = j_base + (unsigned long long)b_idx * K;"
         )
         .unwrap();
         for c in 0..k {
@@ -1640,10 +1651,21 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "            F n = (F)ni;").unwrap();
     writeln!(s, "            if (ni == 0) {{ r = jet_const((F)1); }}").unwrap();
     writeln!(s, "            else if (ni == 1) {{ r = a; }}").unwrap();
-    // a.v[0] == 0 with n>=2: 0^n = 0. For negative n, fall through to exp-ln (produces Inf).
+    // a.v[0] == 0 with small n>=2: use repeated jet_mul to preserve higher-order
+    // Taylor coefficients (e.g., x^2 at x=0 has nonzero c2=v^2).
     writeln!(
         s,
-        "            else if (a.v[0] == F(0) && ni >= 2) {{ r = jet_const(F(0)); }}"
+        "            else if (a.v[0] == F(0) && ni == 2) {{ r = jet_mul(a, a); }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni == 3) {{ r = jet_mul(jet_mul(a, a), a); }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni == 4) {{ r = jet_mul(jet_mul(a, a), jet_mul(a, a)); }}"
     )
     .unwrap();
     writeln!(s, "            else if (a.v[0] <= F(0)) {{").unwrap();
@@ -1776,7 +1798,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        }}").unwrap();
 
     // Store result
-    writeln!(s, "        unsigned int r_off = j_base + i * K;").unwrap();
+    writeln!(s, "        unsigned long long r_off = j_base + i * K;").unwrap();
     for c in 0..k {
         writeln!(s, "        jets[r_off + {c}] = r.v[{c}];").unwrap();
     }
@@ -1790,8 +1812,12 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     .unwrap();
     writeln!(s, "    for (unsigned int j = 0; j < num_outputs; j++) {{").unwrap();
     writeln!(s, "        unsigned int oi = output_indices[j];").unwrap();
-    writeln!(s, "        unsigned int src = j_base + oi * K;").unwrap();
-    writeln!(s, "        unsigned int dst = out_base + j * K;").unwrap();
+    writeln!(
+        s,
+        "        unsigned long long src = j_base + (unsigned long long)oi * K;"
+    )
+    .unwrap();
+    writeln!(s, "        unsigned long long dst = out_base + j * K;").unwrap();
     for c in 0..k {
         writeln!(s, "        jet_outputs[dst + {c}] = jets[src + {c}];").unwrap();
     }
