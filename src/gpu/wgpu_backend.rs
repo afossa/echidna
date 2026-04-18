@@ -489,10 +489,16 @@ impl WgpuContext {
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        let _ = self.device.poll(wgpu::PollType::Wait {
-            submission_index: Some(sub_idx),
-            timeout: None,
-        });
+        // Propagate `device.poll` failures rather than swallowing them —
+        // on device loss (driver reset, OOM in another submission) a
+        // silently-ignored poll error turned into an indefinite wait on
+        // the `rx.recv()` below, looking like a deadlock to callers.
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(sub_idx),
+                timeout: None,
+            })
+            .map_err(|e| GpuError::Other(format!("device poll failed: {e}")))?;
 
         rx.recv()
             .map_err(|e| GpuError::Other(format!("channel recv failed: {e}")))?
@@ -726,10 +732,16 @@ impl GpuBackend for WgpuContext {
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        let _ = self.device.poll(wgpu::PollType::Wait {
-            submission_index: Some(sub_idx),
-            timeout: None,
-        });
+        // Propagate `device.poll` failures rather than swallowing them —
+        // on device loss (driver reset, OOM in another submission) a
+        // silently-ignored poll error turned into an indefinite wait on
+        // the `rx.recv()` below, looking like a deadlock to callers.
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(sub_idx),
+                timeout: None,
+            })
+            .map_err(|e| GpuError::Other(format!("device poll failed: {e}")))?;
 
         rx.recv()
             .map_err(|e| GpuError::Other(format!("channel recv failed: {e}")))?
@@ -944,10 +956,16 @@ impl GpuBackend for WgpuContext {
             let _ = tx2.send(r);
         });
 
-        let _ = self.device.poll(wgpu::PollType::Wait {
-            submission_index: Some(sub_idx),
-            timeout: None,
-        });
+        // Propagate `device.poll` failures rather than swallowing them —
+        // on device loss (driver reset, OOM in another submission) a
+        // silently-ignored poll error turned into an indefinite wait on
+        // the `rx.recv()` below, looking like a deadlock to callers.
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(sub_idx),
+                timeout: None,
+            })
+            .map_err(|e| GpuError::Other(format!("device poll failed: {e}")))?;
 
         rx1.recv()
             .map_err(|e| GpuError::Other(format!("channel recv failed: {e}")))?
@@ -1138,10 +1156,16 @@ impl GpuBackend for WgpuContext {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
         });
-        let _ = self.device.poll(wgpu::PollType::Wait {
-            submission_index: Some(sub_idx),
-            timeout: None,
-        });
+        // Propagate `device.poll` failures rather than swallowing them —
+        // on device loss (driver reset, OOM in another submission) a
+        // silently-ignored poll error turned into an indefinite wait on
+        // the `rx.recv()` below, looking like a deadlock to callers.
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(sub_idx),
+                timeout: None,
+            })
+            .map_err(|e| GpuError::Other(format!("device poll failed: {e}")))?;
         rx.recv()
             .map_err(|e| GpuError::Other(format!("recv: {e}")))?
             .map_err(|e| GpuError::Other(format!("map: {e}")))?;
@@ -1360,10 +1384,16 @@ impl GpuBackend for WgpuContext {
         hs.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx2.send(r);
         });
-        let _ = self.device.poll(wgpu::PollType::Wait {
-            submission_index: Some(sub_idx),
-            timeout: None,
-        });
+        // Propagate `device.poll` failures rather than swallowing them —
+        // on device loss (driver reset, OOM in another submission) a
+        // silently-ignored poll error turned into an indefinite wait on
+        // the `rx.recv()` below, looking like a deadlock to callers.
+        self.device
+            .poll(wgpu::PollType::Wait {
+                submission_index: Some(sub_idx),
+                timeout: None,
+            })
+            .map_err(|e| GpuError::Other(format!("device poll failed: {e}")))?;
 
         rx1.recv()
             .map_err(|e| GpuError::Other(format!("{e}")))?
