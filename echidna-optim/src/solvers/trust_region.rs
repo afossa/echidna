@@ -141,6 +141,23 @@ pub fn trust_region<F: Float, O: Objective<F>>(
 
         let step_norm = norm(&step);
 
+        // NaN detection: if the HVP returned NaN (overflow, ill-conditioned
+        // objective, NaN-propagating user code), `predicted` is NaN and every
+        // subsequent comparison is vacuously false — the radius never updates
+        // and the solver spins to `max_iter` without diagnosing. Return
+        // `NumericalError` at the first sign of a NaN.
+        if !predicted.is_finite() || !actual.is_finite() {
+            return OptimResult {
+                x,
+                value: f_val,
+                gradient: grad,
+                gradient_norm: grad_norm,
+                iterations: iter + 1,
+                func_evals,
+                termination: TerminationReason::NumericalError,
+            };
+        }
+
         // Guard: reject step unconditionally when predicted reduction is non-positive.
         // The quadratic model predicts the step makes things worse — the subproblem is unreliable.
         if predicted <= F::zero() {

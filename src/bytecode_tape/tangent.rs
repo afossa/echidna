@@ -302,9 +302,24 @@ impl<F: Float> super::BytecodeTape<F> {
         let mut dual_input_buf: Vec<Dual<F>> = Vec::with_capacity(n);
         let mut dual_vals_buf = Vec::new();
         let mut adjoint_buf = Vec::new();
-        let mut hessian = vec![vec![F::zero(); n]; n];
-        let mut gradient = vec![F::zero(); n];
+        let hessian = vec![vec![F::zero(); n]; n];
+        let gradient = vec![F::zero(); n];
         let mut value = F::zero();
+
+        // Constant-output tape (n == 0): the dual-column loop never runs,
+        // so `value` would stay at zero. Recover the true constant by
+        // replaying the tape's primal forward pass.
+        if n == 0 {
+            let mut values_buf = Vec::new();
+            self.forward_into(&[], &mut values_buf);
+            if let Some(&v) = values_buf.get(self.output_index as usize) {
+                value = v;
+            }
+            return (value, gradient, hessian);
+        }
+
+        let mut hessian = hessian;
+        let mut gradient = gradient;
 
         for j in 0..n {
             // Reuse input buffer
@@ -358,9 +373,23 @@ impl<F: Float> super::BytecodeTape<F> {
         let mut dual_input_buf: Vec<DualVec<F, N>> = Vec::with_capacity(n);
         let mut dual_vals_buf: Vec<DualVec<F, N>> = Vec::new();
         let mut adjoint_buf: Vec<DualVec<F, N>> = Vec::new();
-        let mut hessian = vec![vec![F::zero(); n]; n];
-        let mut gradient = vec![F::zero(); n];
+        let hessian = vec![vec![F::zero(); n]; n];
+        let gradient = vec![F::zero(); n];
         let mut value = F::zero();
+
+        // Constant-output tape (n == 0): the batch loop never runs so `value`
+        // would stay at zero. Recover the true constant via a primal pass.
+        if n == 0 {
+            let mut values_buf = Vec::new();
+            self.forward_into(&[], &mut values_buf);
+            if let Some(&v) = values_buf.get(self.output_index as usize) {
+                value = v;
+            }
+            return (value, gradient, hessian);
+        }
+
+        let mut hessian = hessian;
+        let mut gradient = gradient;
 
         let num_batches = n.div_ceil(N);
         for batch in 0..num_batches {
