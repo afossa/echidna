@@ -41,14 +41,14 @@ macro_rules! cuda_forward_batch_body {
         let nv = $tape.num_variables;
         let no = $tape.num_outputs;
 
-        assert_eq!($inputs.len(), ($batch_size * ni) as usize);
+        assert_eq!($inputs.len(), ($batch_size as usize) * (ni as usize));
 
         let d_inputs = s.clone_htod($inputs).map_err(cuda_err)?;
         let mut d_values = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_outputs = s
-            .alloc_zeros::<$F>(($batch_size * no) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (no as usize))
             .map_err(cuda_err)?;
 
         let cfg = LaunchConfig {
@@ -89,14 +89,14 @@ macro_rules! cuda_gradient_batch_body {
         let nv = $tape.num_variables;
         let no = $tape.num_outputs;
 
-        assert_eq!($inputs.len(), ($batch_size * ni) as usize);
+        assert_eq!($inputs.len(), ($batch_size as usize) * (ni as usize));
 
         let d_inputs = s.clone_htod($inputs).map_err(cuda_err)?;
         let mut d_values = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_outputs = s
-            .alloc_zeros::<$F>(($batch_size * no) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (no as usize))
             .map_err(cuda_err)?;
 
         let cfg = LaunchConfig {
@@ -127,10 +127,10 @@ macro_rules! cuda_gradient_batch_body {
 
         // Reverse pass
         let mut d_adjoints = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_grads = s
-            .alloc_zeros::<$F>(($batch_size * ni) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (ni as usize))
             .map_err(cuda_err)?;
 
         let mut builder = s.launch_builder(&$self.$rev_kernel);
@@ -164,9 +164,9 @@ macro_rules! cuda_hvp_batch_body {
         let nv = $tape.num_variables;
 
         assert_eq!($x.len(), ni as usize);
-        assert_eq!($tangent_dirs.len(), ($batch_size * ni) as usize);
+        assert_eq!($tangent_dirs.len(), ($batch_size as usize) * (ni as usize));
 
-        let mut primal_inputs = Vec::with_capacity(($batch_size * ni) as usize);
+        let mut primal_inputs = Vec::with_capacity(($batch_size as usize) * (ni as usize));
         for _ in 0..$batch_size {
             primal_inputs.extend_from_slice($x);
         }
@@ -174,22 +174,22 @@ macro_rules! cuda_hvp_batch_body {
         let d_primal_in = s.clone_htod(&primal_inputs).map_err(cuda_err)?;
         let d_seeds = s.clone_htod($tangent_dirs).map_err(cuda_err)?;
         let mut d_primals = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_tans = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_adj_re = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_adj_eps = s
-            .alloc_zeros::<$F>(($batch_size * nv) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_grads = s
-            .alloc_zeros::<$F>(($batch_size * ni) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (ni as usize))
             .map_err(cuda_err)?;
         let mut d_hvps = s
-            .alloc_zeros::<$F>(($batch_size * ni) as usize)
+            .alloc_zeros::<$F>(($batch_size as usize) * (ni as usize))
             .map_err(cuda_err)?;
 
         let cfg = LaunchConfig {
@@ -267,13 +267,13 @@ macro_rules! cuda_sparse_jacobian_body {
         };
         let d_seeds = s.clone_htod(&seeds).map_err(cuda_err)?;
         let mut d_primals = s
-            .alloc_zeros::<$F>((batch * nv) as usize)
+            .alloc_zeros::<$F>((batch as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_tangents = s
-            .alloc_zeros::<$F>((batch * nv) as usize)
+            .alloc_zeros::<$F>((batch as usize) * (nv as usize))
             .map_err(cuda_err)?;
         let mut d_tangent_out = s
-            .alloc_zeros::<$F>((batch * $tape.num_outputs) as usize)
+            .alloc_zeros::<$F>((batch as usize) * ($tape.num_outputs as usize))
             .map_err(cuda_err)?;
 
         let cfg = LaunchConfig {
@@ -739,7 +739,7 @@ impl CudaContext {
         let ni = tape.num_inputs;
         let nv = tape.num_variables;
         let no = tape.num_outputs;
-        let total_in = (batch_size * ni) as usize;
+        let total_in = (batch_size as usize) * (ni as usize);
 
         assert_eq!(
             primal_inputs.len(),
@@ -757,10 +757,10 @@ impl CudaContext {
         let d_primals = s.clone_htod(primal_inputs).map_err(cuda_err)?;
         let d_seeds = s.clone_htod(direction_seeds).map_err(cuda_err)?;
         let mut d_jets = s
-            .alloc_zeros::<f32>((batch_size * nv * k) as usize)
+            .alloc_zeros::<f32>((batch_size as usize) * (nv as usize) * (k as usize))
             .map_err(cuda_err)?;
         let mut d_jet_out = s
-            .alloc_zeros::<f32>((batch_size * no * k) as usize)
+            .alloc_zeros::<f32>((batch_size as usize) * (no as usize) * (k as usize))
             .map_err(cuda_err)?;
 
         let cfg = LaunchConfig {
@@ -792,7 +792,7 @@ impl CudaContext {
         let raw = s.clone_dtoh(&d_jet_out).map_err(cuda_err)?;
 
         // Deinterleave: raw is [c0, c1, ..., c_{K-1}] per output per batch element
-        let total_out = (batch_size * no) as usize;
+        let total_out = (batch_size as usize) * (no as usize);
         let mut coefficients: Vec<Vec<f32>> =
             (0..order).map(|_| Vec::with_capacity(total_out)).collect();
         for i in 0..total_out {
@@ -829,7 +829,7 @@ impl CudaContext {
         let ni = tape.num_inputs;
         let nv = tape.num_variables;
         let no = tape.num_outputs;
-        let total_in = (batch_size * ni) as usize;
+        let total_in = (batch_size as usize) * (ni as usize);
 
         assert_eq!(
             primal_inputs.len(),
@@ -847,10 +847,10 @@ impl CudaContext {
         let d_primals = s.clone_htod(primal_inputs).map_err(cuda_err)?;
         let d_seeds = s.clone_htod(direction_seeds).map_err(cuda_err)?;
         let mut d_jets = s
-            .alloc_zeros::<f64>((batch_size * nv * k) as usize)
+            .alloc_zeros::<f64>((batch_size as usize) * (nv as usize) * (k as usize))
             .map_err(cuda_err)?;
         let mut d_jet_out = s
-            .alloc_zeros::<f64>((batch_size * no * k) as usize)
+            .alloc_zeros::<f64>((batch_size as usize) * (no as usize) * (k as usize))
             .map_err(cuda_err)?;
 
         let cfg = LaunchConfig {
@@ -881,7 +881,7 @@ impl CudaContext {
         s.synchronize().map_err(cuda_err)?;
         let raw = s.clone_dtoh(&d_jet_out).map_err(cuda_err)?;
 
-        let total_out = (batch_size * no) as usize;
+        let total_out = (batch_size as usize) * (no as usize);
         let mut coefficients: Vec<Vec<f64>> =
             (0..order).map(|_| Vec::with_capacity(total_out)).collect();
         for i in 0..total_out {
