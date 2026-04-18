@@ -538,7 +538,12 @@ pub fn eval_dyn<F: Float + TaylorArenaLocal>(
 
     let num_results = plan.multi_indices.len();
     let mut derivatives = vec![F::zero(); num_results];
-    let mut value = x.iter().copied().fold(F::zero(), |a, b| a + b); // placeholder
+    // `value` is overwritten by the first non-empty group's pushforward.
+    // For the degenerate empty-plan case (no groups), zero is a defensible
+    // default — the previous `Σx[i]` placeholder looked plausible but
+    // silently returned the sum of inputs if the plan had no groups,
+    // which is a latent wrong-answer hazard.
+    let mut value = F::zero();
 
     for group in &plan.groups {
         let _guard = TaylorDynGuard::<F>::new(group.jet_order);
@@ -585,10 +590,15 @@ pub fn eval_dyn<F: Float + TaylorArenaLocal>(
 /// Returns `(value, derivative)` where `value = u(x)` and `derivative` is the
 /// mixed partial specified by `orders`.
 ///
+/// When every order in `orders` is zero, the function returns
+/// `(u(x), u(x))` — an all-zero multi-index is the identity operator, so
+/// the "derivative" is just `u(x)` itself. This is the mathematically
+/// correct answer and not an error. An earlier version of this docstring
+/// claimed a panic; no such panic exists.
+///
 /// # Panics
 ///
-/// Panics if `orders.len()` does not match `tape.num_inputs()`, or if all
-/// orders are zero.
+/// Panics if `orders.len()` does not match `tape.num_inputs()`.
 pub fn mixed_partial<F: Float + TaylorArenaLocal>(
     tape: &BytecodeTape<F>,
     x: &[F],
