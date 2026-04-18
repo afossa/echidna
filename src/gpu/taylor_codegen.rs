@@ -667,11 +667,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
         "                    let da = b.v[0] * pow(a.v[0], b.v[0] - 1.0);"
     )
     .unwrap();
-    writeln!(
-        s,
-        "                    let db = select(val * log(abs(a.v[0])), 0.0, val == 0.0);"
-    )
-    .unwrap();
+    // CPU OpCode::Powf sets db = 0 for a ≤ 0 (finite r at a < 0 means b was
+    // integer; classical db at integer b is undefined, convention is 0).
+    // Any db from log(|a|) would diverge from the CPU.
+    writeln!(s, "                    let db = 0.0;").unwrap();
     writeln!(s, "                    r.v[0] = val;").unwrap();
     if k > 1 {
         writeln!(s, "                    r.v[1] = da * a.v[1] + db * b.v[1];").unwrap();
@@ -797,9 +796,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                    r = jet_const(1.0);").unwrap();
     writeln!(s, "                }} else if n == 1.0 {{").unwrap();
     writeln!(s, "                    r = a;").unwrap();
-    // a.v[0] == 0 with small n>=2: use repeated jet multiplication to preserve
-    // higher-order Taylor coefficients (e.g., x^2 at x=0 has nonzero c2=v^2).
-    // For n>4 at zero, fall through to the a.v[0]<=0 path which handles via squaring.
+    // a.v[0] == 0 with small |n| ≥ 2: use repeated jet multiplication to preserve
+    // higher-order Taylor coefficients (e.g., x^n at x=0 has the first nonzero
+    // coefficient at index n, which squaring reproduces correctly). The generic
+    // `a.v[0] <= 0.0` path below uses `log|a| = log(0) = -inf` and cannot
+    // represent these without poisoning all coefficients with NaN.
+    // Chain form matches CPU `taylor_powi_squaring`: a² := a·a, a³ := a²·a,
+    // a⁴ := a²·a², a⁵ := a⁴·a, a⁶ := a⁴·a², a⁷ := a⁴·a²·a, a⁸ := a⁴·a⁴.
     writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 2 {{").unwrap();
     writeln!(s, "                    r = jet_mul(a, a);").unwrap();
     writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 3 {{").unwrap();
@@ -807,7 +810,31 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 4 {{").unwrap();
     writeln!(
         s,
-        "                    r = jet_mul(jet_mul(a, a), jet_mul(a, a));"
+        "                    let a2 = jet_mul(a, a); r = jet_mul(a2, a2);"
+    )
+    .unwrap();
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 5 {{").unwrap();
+    writeln!(
+        s,
+        "                    let a2 = jet_mul(a, a); let a4 = jet_mul(a2, a2); r = jet_mul(a4, a);"
+    )
+    .unwrap();
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 6 {{").unwrap();
+    writeln!(
+        s,
+        "                    let a2 = jet_mul(a, a); let a4 = jet_mul(a2, a2); r = jet_mul(a4, a2);"
+    )
+    .unwrap();
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 7 {{").unwrap();
+    writeln!(
+        s,
+        "                    let a2 = jet_mul(a, a); let a4 = jet_mul(a2, a2); r = jet_mul(jet_mul(a4, a2), a);"
+    )
+    .unwrap();
+    writeln!(s, "                }} else if a.v[0] == 0.0 && ni == 8 {{").unwrap();
+    writeln!(
+        s,
+        "                    let a2 = jet_mul(a, a); let a4 = jet_mul(a2, a2); r = jet_mul(a4, a4);"
     )
     .unwrap();
     writeln!(s, "                }} else if a.v[0] <= 0.0 {{").unwrap();
@@ -916,13 +943,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "            case 34u: {{ r = jet_acosh(a); }}").unwrap();
     writeln!(s, "            case 35u: {{ r = jet_atanh(a); }}").unwrap();
 
-    // Nonsmooth — ABS: use signum (±1 including at 0) to match Rust's f64::signum
+    // Nonsmooth — ABS: scan for the first non-zero Taylor coefficient to
+    // decide the sign. Matches CPU `Taylor::abs` semantics: at a = [0, -v, …]
+    // the function |f(t)| ≈ v·|t| in a neighborhood of t=0, so the effective
+    // sign comes from the first-non-zero coefficient (here -v → sg = -1).
+    // Defaulting sg = +1 at a.v[0]=0 (as `sign(0) = 0` would prompt) gives
+    // the wrong branch when a.v[1] < 0 or later coefficients dominate.
     writeln!(s, "            case 36u: {{").unwrap();
-    writeln!(
-        s,
-        "                let sg = select(sign(a.v[0]), 1.0, a.v[0] == 0.0);"
-    )
-    .unwrap();
+    writeln!(s, "                var sg: f32 = 1.0;").unwrap();
+    for i in 0..k {
+        writeln!(
+            s,
+            "                if a.v[{i}] != 0.0 {{ sg = select(1.0, -1.0, a.v[{i}] < 0.0); }} else",
+        )
+        .unwrap();
+    }
+    // Close the else-if chain with an empty else block; sg stays at 1.0 for
+    // the identically-zero series (Rust convention).
+    writeln!(s, "                {{ }}").unwrap();
     writeln!(s, "                r.v[0] = abs(a.v[0]);").unwrap();
     for i in 1..k {
         writeln!(s, "                r.v[{i}] = sg * a.v[{i}];").unwrap();
@@ -1526,11 +1564,9 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
         "                F da = b.v[0] * pow(a.v[0], b.v[0] - F(1));"
     )
     .unwrap();
-    writeln!(
-        s,
-        "                F db = (val == F(0)) ? F(0) : val * log(fabs(a.v[0]));"
-    )
-    .unwrap();
+    // CPU OpCode::Powf sets db = 0 for a ≤ 0 (finite val at a < 0 means b was
+    // integer; classical db at integer b is undefined, convention is 0).
+    writeln!(s, "                F db = F(0);").unwrap();
     writeln!(s, "                r.v[0] = val;").unwrap();
     if k > 1 {
         writeln!(s, "                r.v[1] = da * a.v[1] + db * b.v[1];").unwrap();
@@ -1654,8 +1690,10 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "            F n = (F)ni;").unwrap();
     writeln!(s, "            if (ni == 0) {{ r = jet_const((F)1); }}").unwrap();
     writeln!(s, "            else if (ni == 1) {{ r = a; }}").unwrap();
-    // a.v[0] == 0 with small n>=2: use repeated jet_mul to preserve higher-order
-    // Taylor coefficients (e.g., x^2 at x=0 has nonzero c2=v^2).
+    // a.v[0] == 0 with small |n| ≥ 2: use repeated jet_mul to preserve
+    // higher-order Taylor coefficients. The `log|a| = log(0) = -inf` path
+    // below poisons all coefficients with NaN at a = 0, so explicit squaring
+    // for |n| ∈ {2,…,8} is required to match CPU `taylor_powi_squaring`.
     writeln!(
         s,
         "            else if (a.v[0] == F(0) && ni == 2) {{ r = jet_mul(a, a); }}"
@@ -1668,7 +1706,27 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     .unwrap();
     writeln!(
         s,
-        "            else if (a.v[0] == F(0) && ni == 4) {{ r = jet_mul(jet_mul(a, a), jet_mul(a, a)); }}"
+        "            else if (a.v[0] == F(0) && ni == 4) {{ JetK a2 = jet_mul(a, a); r = jet_mul(a2, a2); }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni == 5) {{ JetK a2 = jet_mul(a, a); JetK a4 = jet_mul(a2, a2); r = jet_mul(a4, a); }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni == 6) {{ JetK a2 = jet_mul(a, a); JetK a4 = jet_mul(a2, a2); r = jet_mul(a4, a2); }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni == 7) {{ JetK a2 = jet_mul(a, a); JetK a4 = jet_mul(a2, a2); r = jet_mul(jet_mul(a4, a2), a); }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "            else if (a.v[0] == F(0) && ni == 8) {{ JetK a2 = jet_mul(a, a); JetK a4 = jet_mul(a2, a2); r = jet_mul(a4, a4); }}"
     )
     .unwrap();
     writeln!(s, "            else if (a.v[0] <= F(0)) {{").unwrap();
@@ -1772,8 +1830,19 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "        case 35: r = jet_atanh(a); break;").unwrap();
 
     // ABS
+    // Nonsmooth — ABS: scan for the first non-zero Taylor coefficient to
+    // decide the sign. Matches CPU `Taylor::abs`: at a = [0, -v, …] the
+    // sign is -1 (driven by the first-non-zero coefficient), not +1.
     writeln!(s, "        case 36: {{").unwrap();
-    writeln!(s, "            F sg = _sign(a.v[0]);").unwrap();
+    writeln!(s, "            F sg = F(1);").unwrap();
+    for i in 0..k {
+        writeln!(
+            s,
+            "            if (a.v[{i}] != F(0)) {{ sg = (a.v[{i}] < F(0)) ? F(-1) : F(1); }} else",
+        )
+        .unwrap();
+    }
+    writeln!(s, "            {{ /* identically zero series → sg = 1 */ }}").unwrap();
     writeln!(s, "            r.v[0] = fabs(a.v[0]);").unwrap();
     for i in 1..k {
         writeln!(s, "            r.v[{i}] = sg * a.v[{i}];").unwrap();
