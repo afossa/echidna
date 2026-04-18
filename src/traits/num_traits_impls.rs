@@ -659,6 +659,20 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
     }
 
     fn powf(self, n: Self) -> Self {
+        // Constant integer exponent fast path (see `Dual::powf`): if `n` is a
+        // tape constant and its value is a losslessly representable integer,
+        // dispatch to `powi`. This avoids recording `dy = val * ln(self) = NaN`
+        // for `self < 0` — the NaN would contaminate the constant's adjoint
+        // slot, which is silently dropped on the reverse sweep for a true
+        // constant, but breaks any caller that later promotes `n` to a live
+        // variable by building on the same tape shape.
+        if n.index == crate::tape::CONSTANT {
+            if let Some(ni) = n.value.to_i32() {
+                if F::from(ni).unwrap() == n.value {
+                    return NumFloat::powi(self, ni);
+                }
+            }
+        }
         if n.value == F::zero() {
             // a^0 = 1, d/da(a^0) = 0, d/db(a^b)|_{b=0} = ln(a) (for a > 0)
             let dy = if self.value > F::zero() {
@@ -676,8 +690,14 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
         } else {
             n.value * val / self.value
         };
-        let dy = if val == F::zero() {
-            F::zero() // lim_{x→0+} x^y * ln(x) = 0 for y > 0
+        let dy = if val == F::zero() || self.value <= F::zero() {
+            // val == 0: lim_{x→0+} x^y * ln(x) = 0 for y > 0.
+            // self <= 0: ln(self) is NaN (stdlib real-valued). For self < 0
+            //   with finite val, b must have been integer (otherwise val = NaN);
+            //   the "derivative w.r.t. b at an integer b" is not classically
+            //   defined, and 0 is the conventional choice — matches the
+            //   forward-mode Dual::powf integer-dispatch fast path.
+            F::zero()
         } else {
             val * self.value.ln()
         };

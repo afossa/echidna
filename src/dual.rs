@@ -109,6 +109,19 @@ impl<F: Float> Dual<F> {
     #[inline]
     pub fn powf(self, n: Self) -> Self {
         // d/dx (x^y) = y * x^(y-1) * dx + x^y * ln(x) * dy
+        //
+        // Constant integer exponent fast path: if `n` has no tangent and its
+        // value is a losslessly representable integer, dispatch to `powi`.
+        // This avoids computing `ln(x)` for `x < 0` where stdlib returns NaN —
+        // that NaN would poison `eps` via `NaN * 0 = NaN` in IEEE 754, even
+        // though `dy` is algebraically zero for a constant exponent.
+        if n.eps == F::zero() {
+            if let Some(ni) = n.re.to_i32() {
+                if F::from(ni).unwrap() == n.re {
+                    return self.powi(ni);
+                }
+            }
+        }
         if n.re == F::zero() {
             // a^0 = 1, d/da(a^0) = 0, d/db(a^b)|_{b=0} = ln(a) (for a > 0)
             let dy = if self.re > F::zero() {

@@ -434,6 +434,20 @@ pub fn taylor_powf<F: Float>(
     scratch1: &mut [F],
     scratch2: &mut [F],
 ) {
+    // Constant integer exponent fast path: if `b` is a plain scalar (higher
+    // coefficients are zero) and that scalar is an integer, route to
+    // `taylor_powi`. Otherwise `taylor_ln(a)` returns NaN for `a[0] <= 0`,
+    // poisoning the entire result — even for negative-base integer powers
+    // that have well-defined Taylor coefficients.
+    if b[1..].iter().all(|&bk| bk == F::zero()) {
+        let b0 = b[0];
+        if let Some(ni) = b0.to_i32() {
+            if F::from(ni).unwrap() == b0 {
+                taylor_powi(a, ni, c, scratch1, scratch2);
+                return;
+            }
+        }
+    }
     // scratch1 = ln(a)
     taylor_ln(a, scratch1);
     // scratch2 = b * ln(a)

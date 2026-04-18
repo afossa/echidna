@@ -388,6 +388,20 @@ impl<F: Float, const K: usize> Laurent<F, K> {
     #[inline]
     pub fn powf(self, n: Self) -> Self {
         // a^b = exp(b * ln(a))
+        //
+        // Constant integer exponent fast path: if `n` is a plain scalar
+        // (pole_order == 0, only the primal nonzero) and that scalar is an
+        // integer, dispatch to `powi`. The exp/ln roundtrip otherwise returns
+        // NaN whenever `self.ln()` does — i.e. whenever `self` has a
+        // non-positive leading coefficient or any pole.
+        if n.pole_order == 0 && n.coeffs[1..].iter().all(|&c| c == F::zero()) {
+            let n0 = n.coeffs[0];
+            if let Some(ni) = n0.to_i32() {
+                if F::from(ni).unwrap() == n0 {
+                    return self.powi(ni);
+                }
+            }
+        }
         (n * self.ln()).exp()
     }
 

@@ -339,7 +339,14 @@ pub fn reverse_partials<T: Float>(op: OpCode, a: T, b: T, r: T) -> (T, T) {
                 } else {
                     b * r / a
                 };
-                let db = if r == zero { zero } else { r * a.ln() };
+                // For `a <= 0`, `a.ln()` is NaN (stdlib real-valued). A finite
+                // `r` at `a < 0` means `b` was integer (else `r = NaN`); the
+                // derivative w.r.t. `b` at an integer `b` is not classically
+                // defined, and the convention here is 0 — matching the
+                // forward-mode `Dual::powf` constant-integer fast path. This
+                // also prevents NaN from contaminating a live tape slot for
+                // `b` on reverse sweep.
+                let db = if r == zero || a <= zero { zero } else { r * a.ln() };
                 (da, db)
             }
         }

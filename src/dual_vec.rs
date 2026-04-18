@@ -127,6 +127,16 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     /// Floating-point power.
     #[inline]
     pub fn powf(self, n: Self) -> Self {
+        // Constant integer exponent fast path (see `Dual::powf` for rationale):
+        // avoids `ln(x)` NaN-poisoning the tangent when the exponent is a
+        // constant and `x < 0`.
+        if n.eps.iter().all(|&e| e == F::zero()) {
+            if let Some(ni) = n.re.to_i32() {
+                if F::from(ni).unwrap() == n.re {
+                    return self.powi(ni);
+                }
+            }
+        }
         if n.re == F::zero() {
             // a^0 = 1, d/da(a^0) = 0, d/db(a^b)|_{b=0} = ln(a) (for a > 0)
             let dy = if self.re > F::zero() {
