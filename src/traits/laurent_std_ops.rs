@@ -123,7 +123,14 @@ impl<F: Float, const K: usize> Mul for Laurent<F, K> {
     fn mul(self, rhs: Self) -> Self {
         let mut c = [F::zero(); K];
         taylor_ops::taylor_mul(&self.leading_coeffs(), &rhs.leading_coeffs(), &mut c);
-        Laurent::new(c, self.pole_order() + rhs.pole_order())
+        // Pole orders can legitimately be large on near-singular inputs; use
+        // checked arithmetic so `i32::MAX + 1` folds to a degenerate NaN
+        // Laurent instead of silently wrapping into a negative order.
+        let p = match self.pole_order().checked_add(rhs.pole_order()) {
+            Some(p) => p,
+            None => return Laurent::nan_pub(),
+        };
+        Laurent::new(c, p)
     }
 }
 
@@ -140,7 +147,11 @@ impl<F: Float, const K: usize> Div for Laurent<F, K> {
         }
         let mut c = [F::zero(); K];
         taylor_ops::taylor_div(&self.leading_coeffs(), &rhs.leading_coeffs(), &mut c);
-        Laurent::new(c, self.pole_order() - rhs.pole_order())
+        let p = match self.pole_order().checked_sub(rhs.pole_order()) {
+            Some(p) => p,
+            None => return Laurent::nan_pub(),
+        };
+        Laurent::new(c, p)
     }
 }
 

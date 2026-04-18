@@ -269,9 +269,16 @@ impl<F: Float, const K: usize> Laurent<F, K> {
         }
         let mut c = [F::zero(); K];
         taylor_ops::taylor_recip(&self.coeffs, &mut c);
+        // `pole_order: i32::MIN` cannot be negated in two's complement; a bare
+        // `-self.pole_order` would silently wrap to i32::MIN again, producing
+        // a nonsensical Laurent. Treat overflow as a degenerate value.
+        let negated = match self.pole_order.checked_neg() {
+            Some(n) => n,
+            None => return Self::nan_laurent(),
+        };
         let mut l = Laurent {
             coeffs: c,
-            pole_order: -self.pole_order,
+            pole_order: negated,
         };
         l.normalize();
         l

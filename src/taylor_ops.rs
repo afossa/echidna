@@ -151,6 +151,18 @@ pub fn taylor_sqrt<F: Float>(a: &[F], c: &mut [F]) {
         }
         return;
     }
+    if a[0] < F::zero() {
+        // sqrt is undefined on the negative reals. Relying on `.sqrt()`'s
+        // silent NaN propagates the NaN into c[0] but leaves higher-order
+        // coefficients computed from division by `2 * NaN` in a state that
+        // looks like a normal recurrence. Make the degeneracy explicit so
+        // downstream callers don't accidentally consume a mix of finite
+        // and non-finite coefficients.
+        for ci in c.iter_mut() {
+            *ci = F::nan();
+        }
+        return;
+    }
     c[0] = a[0].sqrt();
     let two_c0 = F::from(2.0).unwrap() * c[0];
     for k in 1..n {
@@ -657,6 +669,12 @@ pub fn taylor_log10<F: Float>(a: &[F], c: &mut [F]) {
 #[inline]
 pub fn taylor_ln_1p<F: Float>(a: &[F], c: &mut [F], scratch: &mut [F]) {
     let n = c.len();
+    // All call sites are already guarded by the compile-time `K >= 1` const
+    // assert in bytecode_tape/taylor.rs, but `taylor_ln_1p` is also callable
+    // directly. `c[0] = a[0].ln_1p()` below unconditionally indexes [0],
+    // so n=0 would panic; surface it as a debug assert with an actionable
+    // message rather than a raw slice panic.
+    debug_assert!(n >= 1, "taylor_ln_1p requires c.len() >= 1");
     scratch[1..n].copy_from_slice(&a[1..n]);
     scratch[0] = F::one() + a[0];
     taylor_ln(scratch, c);

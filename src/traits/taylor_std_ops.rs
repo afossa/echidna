@@ -75,6 +75,15 @@ impl<F: Float, const K: usize> Rem for Taylor<F, K> {
     #[inline]
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn rem(self, rhs: Self) -> Self {
+        // Zero-divisor produces `Inf` from the division and `NaN` from the
+        // modulo in the k=0 slot, then a silent tangent recurrence that mixes
+        // finite and non-finite coefficients. Flag the whole series as NaN so
+        // downstream consumers see a uniformly degenerate result.
+        if rhs.coeffs[0] == F::zero() {
+            return Taylor {
+                coeffs: std::array::from_fn(|_| F::nan()),
+            };
+        }
         let q = (self.coeffs[0] / rhs.coeffs[0]).trunc();
         Taylor {
             coeffs: std::array::from_fn(|k| {
