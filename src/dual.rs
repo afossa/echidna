@@ -66,7 +66,16 @@ impl<F: Float> Dual<F> {
     #[inline]
     pub fn recip(self) -> Self {
         let inv = F::one() / self.re;
-        self.chain(inv, -inv * inv)
+        // At self.re = 0, inv = ±Inf. Skip the chain for eps = 0 so the
+        // tangent is 0 (the "constant zero" convention) rather than the
+        // IEEE `0 * Inf = NaN` we'd otherwise propagate. Non-zero eps at
+        // the singularity keeps the Inf (the true derivative is unbounded).
+        let eps = if self.eps == F::zero() {
+            F::zero()
+        } else {
+            self.eps * (-inv * inv)
+        };
+        Dual { re: inv, eps }
     }
 
     /// Square root.
@@ -339,13 +348,19 @@ impl<F: Float> Dual<F> {
     /// Inverse hyperbolic cosine.
     #[inline]
     pub fn acosh(self) -> Self {
-        // Same overflow avoidance as `asinh` — `x*x - 1` overflows for very
-        // large x, silently zeroing the derivative via 1/inf.
+        // Two-branch derivative:
+        //   |x| > 1e8   → `|1/x| / sqrt(1 - (1/x)²)` avoids x²-1 overflow.
+        //   |x| ≤ 1e8   → `1 / sqrt((x-1)·(x+1))` avoids catastrophic
+        //                 cancellation near x = 1 that `x²-1` would hit
+        //                 (at x = 1 + ε, `x² = 1 + 2ε + ε²` rounds to
+        //                 `1 + 2ε`, losing the ε² contribution). The
+        //                 factored form stays numerically distinct down
+        //                 to the minimum representable positive number.
         let deriv = if self.re.abs() > F::from(1e8).unwrap() {
             let inv = F::one() / self.re;
             inv.abs() / (F::one() - inv * inv).sqrt()
         } else {
-            F::one() / (self.re * self.re - F::one()).sqrt()
+            F::one() / ((self.re - F::one()) * (self.re + F::one())).sqrt()
         };
         self.chain(self.re.acosh(), deriv)
     }
@@ -444,7 +459,11 @@ impl<F: Float> Dual<F> {
             eps: if h == F::zero() {
                 F::zero()
             } else {
-                (self.re * self.eps + other.re * other.eps) / h
+                // Factor as (x/h)·dx + (y/h)·dy to avoid numerator overflow:
+                // `x·dx` alone can overflow for x and dx both large even when
+                // the true tangent is representable. `hypot` does this trick
+                // for the primal; the tangent needs it too.
+                (self.re / h) * self.eps + (other.re / h) * other.eps
             },
         }
     }

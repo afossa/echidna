@@ -679,7 +679,40 @@ pub fn taylor_hypot<F: Float>(
     let n = c.len();
     let scale = a[0].abs().max(b[0].abs());
     if scale == F::zero() {
-        // Both leading terms are zero — compute directly (derivatives may be infinite)
+        // Both leading primals are zero. If the *next* order has any signal,
+        // the composite function t ↦ hypot(a(t), b(t)) is smoothly
+        // `|t|·hypot(a(t)/t, b(t)/t)` near t=0. Recursively compute on the
+        // shifted series, then shift the result back by one to represent the
+        // `|t|·…` factor. This mirrors CPU `Taylor::abs` and gives the true
+        // Taylor expansion rather than the `log(0)·exp` path's NaN/Inf.
+        if n > 1 && (a[1] != F::zero() || b[1] != F::zero()) {
+            let mut a_shifted = vec![F::zero(); n];
+            let mut b_shifted = vec![F::zero(); n];
+            for k in 1..n {
+                a_shifted[k - 1] = a[k];
+                b_shifted[k - 1] = b[k];
+            }
+            let mut inner_c = vec![F::zero(); n];
+            let mut inner_s1 = vec![F::zero(); n];
+            let mut inner_s2 = vec![F::zero(); n];
+            taylor_hypot(
+                &a_shifted,
+                &b_shifted,
+                &mut inner_c,
+                &mut inner_s1,
+                &mut inner_s2,
+            );
+            c[0] = F::zero();
+            for k in 1..n {
+                c[k] = inner_c[k - 1];
+            }
+            return;
+        }
+        // Deeper-order zero (a and b both vanish past the first-non-zero
+        // we can detect in the shifted series) or identically-zero — fall
+        // through to the direct square-then-sqrt path, which gives 0 for
+        // the primal and Inf for higher derivatives (the latter matches
+        // the singular-derivative convention at a true zero).
         taylor_mul(a, a, scratch1);
         taylor_mul(b, b, scratch2);
         for k in 0..n {

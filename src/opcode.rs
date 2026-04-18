@@ -332,9 +332,11 @@ pub fn reverse_partials<T: Float>(op: OpCode, a: T, b: T, r: T) -> (T, T) {
                 let db = if a > zero { a.ln() } else { zero };
                 (zero, db)
             } else {
-                let da = if a == zero || r == zero {
-                    // Direct powf avoids 0/0 when a=0 and catches underflow
-                    // when r=a^b underflows to 0 but a!=0
+                let da = if a == zero || r == zero || !a.is_finite() || !r.is_finite() {
+                    // Direct powf avoids 0/0 when a=0, catches underflow when
+                    // r=a^b underflows to 0 but a!=0, and avoids Inf/Inf = NaN
+                    // when either a or r is infinite (e.g., Inf^2 = Inf, whose
+                    // true derivative at Inf is Inf, not NaN).
                     b * a.powf(b - one)
                 } else {
                     b * r / a

@@ -87,7 +87,19 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     #[inline]
     pub fn recip(self) -> Self {
         let inv = F::one() / self.re;
-        self.chain(inv, -inv * inv)
+        // See `Dual::recip` — skip the chain for zero eps lanes at the
+        // singularity to avoid NaN from `0 * Inf`.
+        let factor = -inv * inv;
+        DualVec {
+            re: inv,
+            eps: std::array::from_fn(|k| {
+                if self.eps[k] == F::zero() {
+                    F::zero()
+                } else {
+                    self.eps[k] * factor
+                }
+            }),
+        }
     }
 
     /// Square root.
@@ -346,11 +358,13 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     /// Inverse hyperbolic cosine.
     #[inline]
     pub fn acosh(self) -> Self {
+        // See `Dual::acosh`: small-|x| branch uses `(x-1)(x+1)` factored form
+        // to avoid catastrophic cancellation near x = 1.
         let deriv = if self.re.abs() > F::from(1e8).unwrap() {
             let inv = F::one() / self.re;
             inv.abs() / (F::one() - inv * inv).sqrt()
         } else {
-            F::one() / (self.re * self.re - F::one()).sqrt()
+            F::one() / ((self.re - F::one()) * (self.re + F::one())).sqrt()
         };
         self.chain(self.re.acosh(), deriv)
     }
@@ -444,7 +458,10 @@ impl<F: Float, const N: usize> DualVec<F, N> {
             eps: if h == F::zero() {
                 [F::zero(); N]
             } else {
-                std::array::from_fn(|k| (self.re * self.eps[k] + other.re * other.eps[k]) / h)
+                // Factor `(x/h)·dx + (y/h)·dy` to keep intermediates bounded.
+                let x_over_h = self.re / h;
+                let y_over_h = other.re / h;
+                std::array::from_fn(|k| x_over_h * self.eps[k] + y_over_h * other.eps[k])
             },
         }
     }
