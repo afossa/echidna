@@ -71,8 +71,10 @@ fn record_with_customs(
         })
         .collect();
 
-    let _guard = BtapeGuard::new(&mut tape);
-    let output = f(&inputs, &handles, x);
+    let output = {
+        let _guard = BtapeGuard::new(&mut tape);
+        f(&inputs, &handles, x)
+    };
 
     tape.set_output(output.index());
     tape

@@ -715,7 +715,7 @@ fn vjp_step<F: Float + BtapeThreadLocal>(
         })
         .collect();
 
-    {
+    let scalar_index = {
         let _guard = BtapeGuard::new(&mut tape);
         let outputs = step(&inputs);
 
@@ -734,8 +734,9 @@ fn vjp_step<F: Float + BtapeThreadLocal>(
             scalar += BReverse::constant(w[i]) * outputs[i];
         }
 
-        tape.set_output(scalar.index);
-    }
+        scalar.index
+    };
+    tape.set_output(scalar_index);
 
     tape.gradient(state)
 }

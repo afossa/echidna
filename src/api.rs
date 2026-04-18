@@ -199,8 +199,10 @@ pub fn record<F: Float + BtapeThreadLocal>(
         })
         .collect();
 
-    let _guard = BtapeGuard::new(&mut tape);
-    let output = f(&inputs);
+    let output = {
+        let _guard = BtapeGuard::new(&mut tape);
+        f(&inputs)
+    };
 
     // Promote constant outputs (index == CONSTANT) to a tape entry so
     // set_output has a valid index. The gradient will correctly be zero.
@@ -238,8 +240,10 @@ pub fn record_multi<F: Float + BtapeThreadLocal>(
         })
         .collect();
 
-    let _guard = BtapeGuard::new(&mut tape);
-    let outputs = f(&inputs);
+    let outputs = {
+        let _guard = BtapeGuard::new(&mut tape);
+        f(&inputs)
+    };
 
     let values: Vec<F> = outputs.iter().map(|o| o.value).collect();
     // Promote constant outputs to tape entries (see record() for rationale).
@@ -381,8 +385,10 @@ where
         })
         .collect();
 
-    let _guard = BtapeGuard::new(&mut tape);
-    let output = f(&inputs);
+    let output = {
+        let _guard = BtapeGuard::new(&mut tape);
+        f(&inputs)
+    };
 
     let value = output.re.value;
     let primal_index = output.re.index;
