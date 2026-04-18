@@ -80,6 +80,13 @@ pub trait GpuBackend {
     /// GPU-resident buffers for the tape's opcodes, arguments, and constants.
     fn upload_tape(&self, data: &GpuTapeData) -> Self::TapeBuffers;
 
+    /// Number of declared outputs on the uploaded tape.
+    ///
+    /// Used by estimators like `stde_gpu::laplacian_gpu` to enforce
+    /// single-output assumptions whose coefficient layout depends on
+    /// the tape's output count.
+    fn num_outputs(&self, tape: &Self::TapeBuffers) -> u32;
+
     /// Batched forward evaluation.
     ///
     /// `inputs` is `[f32; batch_size * num_inputs]` (row-major, one point per row).

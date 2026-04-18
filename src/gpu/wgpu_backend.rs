@@ -525,6 +525,10 @@ impl WgpuContext {
 impl GpuBackend for WgpuContext {
     type TapeBuffers = WgpuTapeBuffers;
 
+    fn num_outputs(&self, tape: &WgpuTapeBuffers) -> u32 {
+        tape.num_outputs
+    }
+
     fn upload_tape(&self, data: &GpuTapeData) -> WgpuTapeBuffers {
         use wgpu::util::DeviceExt;
 

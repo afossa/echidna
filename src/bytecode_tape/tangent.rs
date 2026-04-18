@@ -240,6 +240,14 @@ impl<F: Float> super::BytecodeTape<F> {
         dual_vals_buf: &mut Vec<Dual<F>>,
         adjoint_buf: &mut Vec<Dual<F>>,
     ) -> (Vec<F>, Vec<F>) {
+        assert_eq!(
+            self.num_outputs(),
+            1,
+            "hvp is defined for scalar-output tapes only; this tape has {} \
+             outputs. For vector-valued f use `jacobian` + a caller-provided \
+             cotangent, or record one output at a time.",
+            self.num_outputs(),
+        );
         let n = self.num_inputs as usize;
         assert_eq!(x.len(), n, "wrong number of inputs");
         assert_eq!(v.len(), n, "wrong number of directions");
@@ -281,6 +289,13 @@ impl<F: Float> super::BytecodeTape<F> {
     /// Returns `(value, gradient, hessian)` where `hessian[i][j] = ∂²f/∂x_i∂x_j`.
     /// The tape is not mutated.
     pub fn hessian(&self, x: &[F]) -> (F, Vec<F>, Vec<Vec<F>>) {
+        assert_eq!(
+            self.num_outputs(),
+            1,
+            "hessian is defined for scalar-output tapes only; this tape has {} \
+             outputs. For vector-valued f record one output at a time.",
+            self.num_outputs(),
+        );
         let n = self.num_inputs as usize;
         assert_eq!(x.len(), n, "wrong number of inputs");
 
@@ -329,6 +344,13 @@ impl<F: Float> super::BytecodeTape<F> {
             self.custom_ops.is_empty(),
             "hessian_vec: custom ops produce approximate (first-order) second derivatives; \
              use eval_forward with Dual<Dual<F>> for exact Hessians through custom ops"
+        );
+        assert_eq!(
+            self.num_outputs(),
+            1,
+            "hessian_vec is defined for scalar-output tapes only; this tape has {} \
+             outputs.",
+            self.num_outputs(),
         );
         let n = self.num_inputs as usize;
         assert_eq!(x.len(), n, "wrong number of inputs");

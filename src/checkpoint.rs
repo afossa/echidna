@@ -3,6 +3,24 @@
 //! Uses the optimal binomial (Revolve) checkpointing schedule
 //! (Griewank & Walther, 2000) to minimize recomputation for a given
 //! number of checkpoint slots.
+//!
+//! # Determinism requirement
+//!
+//! The `step` function passed to any `grad_checkpointed*` must be
+//! **bit-deterministic**: re-executing `step` from a checkpoint must
+//! reproduce exactly the state the forward pass observed. The adjoint
+//! seed at the final state is bound to the primal trajectory the
+//! forward pass produced; if re-execution drifts (non-deterministic
+//! parallel reductions, atomic FP adds, rayon folds without a fixed
+//! ordering, GPU kernels with non-deterministic atomics), the gradient
+//! is computed against a trajectory that was never actually run and
+//! silently disagrees with the un-checkpointed reference.
+//!
+//! Symptoms of a non-deterministic `step` in practice: gradient values
+//! that differ across runs, or differ from `grad()` on a small-scale
+//! version of the same computation. If your `step` uses parallelism,
+//! ensure deterministic reduction ordering (e.g. use `rayon::iter`'s
+//! sequential reduce rather than `par_iter().sum()` of floats).
 
 use std::collections::HashSet;
 

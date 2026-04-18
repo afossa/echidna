@@ -136,7 +136,21 @@ impl<F: Float> super::BytecodeTape<F> {
     /// Dense Jacobian via forward mode (one forward-tangent pass per input).
     ///
     /// More efficient than reverse mode when `num_inputs < num_outputs`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the tape contains custom ops. `forward_tangent` linearizes
+    /// custom ops around recording-time primals, so at an evaluation `x`
+    /// different from the recording inputs the Jacobian would be silently
+    /// biased. Matches the behaviour of `hessian_vec`, `sparse_hessian_vec`,
+    /// and `sparse_jacobian_vec`.
     pub fn jacobian_forward(&self, x: &[F]) -> Vec<Vec<F>> {
+        assert!(
+            self.custom_ops.is_empty(),
+            "jacobian_forward: custom ops produce a linearization around recording-\
+             time primals; use `jacobian` (reverse mode) for exact Jacobians through \
+             custom ops"
+        );
         let n = self.num_inputs as usize;
 
         let out_indices = self.all_output_indices();
