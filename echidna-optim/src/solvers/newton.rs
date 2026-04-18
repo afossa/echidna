@@ -178,8 +178,13 @@ pub fn newton<F: Float, O: Objective<F>>(
             };
         }
 
+        // Relative func_tol: absolute `|f_prev - f_val| < tol` is scale-
+        // blind — a tolerance of 1e-8 means ULP-precision on large-
+        // magnitude objectives (|f| ≈ 1e8) and impossibly tight on tiny
+        // ones. Scale by `(1 + |f|)` so the criterion tracks the problem.
         if config.convergence.func_tol > F::zero()
-            && (f_prev - f_val).abs() < config.convergence.func_tol
+            && (f_prev - f_val).abs()
+                < config.convergence.func_tol * (F::one() + f_val.abs())
         {
             return OptimResult {
                 x,
