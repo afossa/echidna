@@ -421,14 +421,46 @@ pub fn reverse_partials<T: Float>(op: OpCode, a: T, b: T, r: T) -> (T, T) {
             }
         }
 
-        // Exp/Log
+        // Exp/Log. Domain-restricted ops emit a NaN partial strictly
+        // outside their valid interval (a < 0 for Ln/Log2/Log10, a < -1
+        // for Ln1p, |a| > 1 for Atanh) so a caller that supplied
+        // out-of-domain inputs sees `(NaN, 0)` instead of a numerically
+        // plausible but semantically meaningless finite partial
+        // (e.g. `1/-1 = -1` for `Ln` at a = -1). Boundary values
+        // (a = 0 for Ln, a = -1 for Ln1p, |a| = 1 for Atanh) are left
+        // to the IEEE arithmetic — the partial evaluates to ±Inf, which
+        // is the correct one-sided derivative limit.
         OpCode::Exp => (r, zero), // d/da e^a = e^a = r
         OpCode::Exp2 => (r * T::ln(T::from(2.0).unwrap()), zero),
         OpCode::ExpM1 => (r + one, zero), // d/da (e^a - 1) = e^a = r+1
-        OpCode::Ln => (one / a, zero),
-        OpCode::Log2 => (one / (a * T::ln(T::from(2.0).unwrap())), zero),
-        OpCode::Log10 => (one / (a * T::ln(T::from(10.0).unwrap())), zero),
-        OpCode::Ln1p => (one / (one + a), zero),
+        OpCode::Ln => {
+            if a >= zero {
+                (one / a, zero)
+            } else {
+                (T::nan(), zero)
+            }
+        }
+        OpCode::Log2 => {
+            if a >= zero {
+                (one / (a * T::ln(T::from(2.0).unwrap())), zero)
+            } else {
+                (T::nan(), zero)
+            }
+        }
+        OpCode::Log10 => {
+            if a >= zero {
+                (one / (a * T::ln(T::from(10.0).unwrap())), zero)
+            } else {
+                (T::nan(), zero)
+            }
+        }
+        OpCode::Ln1p => {
+            if a >= -one {
+                (one / (one + a), zero)
+            } else {
+                (T::nan(), zero)
+            }
+        }
 
         // Trig
         OpCode::Sin => (a.cos(), zero),
@@ -477,10 +509,26 @@ pub fn reverse_partials<T: Float>(op: OpCode, a: T, b: T, r: T) -> (T, T) {
             };
             (da, zero)
         }
-        OpCode::Atanh => (one / ((one - a) * (one + a)), zero),
+        OpCode::Atanh => {
+            if a >= -one && a <= one {
+                (one / ((one - a) * (one + a)), zero)
+            } else {
+                (T::nan(), zero)
+            }
+        }
 
-        // Misc
-        OpCode::Abs => (a.signum(), zero),
+        // Misc. `Abs` uses the symmetric midpoint 0 of the Clarke
+        // subdifferential [-1, 1] at the kink; relying on `a.signum()`
+        // leaks the sign bit of ±0 (`signum(+0) = +0`, `signum(-0) = -0`),
+        // which makes algebraically equivalent tape positions report
+        // different subgradients depending on how the zero was produced.
+        OpCode::Abs => {
+            if a == zero {
+                (zero, zero)
+            } else {
+                (a.signum(), zero)
+            }
+        }
         OpCode::Signum | OpCode::Floor | OpCode::Ceil | OpCode::Round | OpCode::Trunc => {
             (zero, zero)
         }
