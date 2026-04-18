@@ -326,8 +326,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             case 15u /* CBRT */: { let rr=r*r; da_re=1.0/(3.0*rr); da_eps=-2.0*at/(9.0*rr*rr*r); }
             case 16u /* POWI */: {
                 let e=bitcast<i32>(bi);
-                if e == 0 { da_re=0.0; da_eps=0.0; } else {
-                let n=f32(e); da_re=n*pow(a,n-1.0); da_eps=n*(n-1.0)*pow(a,n-2.0)*at; }
+                if e == 0 { da_re=0.0; da_eps=0.0; }
+                else if e == 1 {
+                    // f(a)=a, f'=1, f''=0. The general formula evaluates
+                    // `pow(a, -1) → Inf` at a=0, giving `0 * Inf * at = NaN`.
+                    // Short-circuit to the mathematically exact zero second
+                    // derivative. Mirrors the CUDA fix in tape_eval.cu.
+                    da_re=1.0; da_eps=0.0;
+                } else {
+                    let n=f32(e); da_re=n*pow(a,n-1.0); da_eps=n*(n-1.0)*pow(a,n-2.0)*at;
+                }
             }
             case 17u /* EXP */: { da_re=r; da_eps=r*at; }
             case 18u /* EXP2 */: { let l2=log(2.0); da_re=r*l2; da_eps=r*l2*l2*at; }

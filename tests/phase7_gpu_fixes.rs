@@ -48,6 +48,35 @@ fn m29_wgpu_atan_large_abs_a_stays_finite() {
     // separately; see `m29_cuda_atan_large_abs_a_finite_nonzero`.
 }
 
+// Stronger M29 wgpu discriminator: at `|a| = 3e9` in f32, `a² = 9e18`
+// which is still within f32 range (≤ 3.4e38), so the pre-fix formula
+// `1/(1+a²)` computes `≈ 1/9e18 = 1.1e-19` — a normal f32, not denormal.
+// Metal won't flush this result to zero. The post-fix inv-based formula
+// gives the same answer up to rounding. So this test pins that
+// `g[0] > 0` at a magnitude where Metal denormal flush doesn't
+// interfere, catching a regression that silently returned 0.
+#[cfg(feature = "gpu-wgpu")]
+#[test]
+fn m29_wgpu_atan_moderate_large_a_positive_normal_f32() {
+    let ctx = match WgpuContext::new() {
+        Some(c) => c,
+        None => return,
+    };
+    let (tape, _) = record(|v: &[BReverse<f64>]| v[0].atan(), &[1.0_f64]);
+    let gpu_data = GpuTapeData::from_tape_f64_lossy(&tape).unwrap();
+    let gpu_tape = ctx.upload_tape(&gpu_data);
+    let a = 3e9_f32;
+    let (_, g) = ctx.gradient_batch(&gpu_tape, &[a], 1).unwrap();
+    assert!(
+        g[0].is_finite() && g[0] > 0.0,
+        "atan'(3e9) should be ≈ 1.1e-19 (positive, normal f32), got {}",
+        g[0]
+    );
+    let expected = 1.0_f64 / (1.0 + 9e18);
+    let rel_err = ((g[0] as f64) - expected).abs() / expected;
+    assert!(rel_err < 1e-3, "atan'(3e9) = {:e}, expected ≈ {:e}", g[0], expected);
+}
+
 #[cfg(feature = "gpu-cuda")]
 #[test]
 fn m29_cuda_atan_large_abs_a_finite_nonzero() {
@@ -216,5 +245,32 @@ fn l23_cuda_powi_n1_at_zero_second_derivative_finite() {
     assert_eq!(hv_grad.len(), 1);
     assert_eq!(hv.len(), 1);
     assert!(hv[0].is_finite(), "HVP at powi(x,1), x=0 must be finite, got {}", hv[0]);
+    assert_eq!(hv[0], 0.0, "Hessian of linear function is zero");
+}
+
+// Sibling of L23 on WGSL: the WGSL tangent_reverse must have the same
+// n==1 short-circuit, otherwise the HVP for `x.powi(1)` at x=0 returns
+// NaN and the backends disagree.
+#[cfg(feature = "gpu-wgpu")]
+#[test]
+fn l23_wgpu_powi_n1_at_zero_second_derivative_finite() {
+    let ctx = match WgpuContext::new() {
+        Some(c) => c,
+        None => return,
+    };
+    let (tape, _) = record(
+        |v: &[BReverse<f64>]| v[0].powi(1),
+        &[0.0_f64],
+    );
+    let gpu_data = GpuTapeData::from_tape_f64_lossy(&tape).unwrap();
+    let gpu_tape = ctx.upload_tape(&gpu_data);
+    let (_hv_grad, hv) = ctx
+        .hvp_batch(&gpu_tape, &[0.0_f32], &[1.0_f32], 1)
+        .unwrap();
+    assert!(
+        hv[0].is_finite(),
+        "WGSL HVP at powi(x,1), x=0 must be finite, got {}",
+        hv[0]
+    );
     assert_eq!(hv[0], 0.0, "Hessian of linear function is zero");
 }

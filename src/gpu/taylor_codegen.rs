@@ -725,21 +725,31 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                let bsq = jet_mul(b, b);").unwrap();
     writeln!(s, "                let sum2 = jet_add(asq, bsq);").unwrap();
     writeln!(s, "                r = jet_sqrt(sum2);").unwrap();
+    // Match IEEE `hypot`: `hypot(±Inf, x) = +Inf` for any x (including
+    // NaN), then `hypot(NaN, y) = NaN` for finite y. Checking Inf first
+    // and falling through to the rescaled formula (which propagates NaN
+    // naturally via max/divide) preserves both contracts.
+    writeln!(s, "                let aa = abs(a.v[0]);").unwrap();
+    writeln!(s, "                let bb = abs(b.v[0]);").unwrap();
+    writeln!(s, "                let inf = bitcast<f32>(0x7f800000u);").unwrap();
     writeln!(
         s,
-        "                let h = max(abs(a.v[0]), abs(b.v[0]));"
+        "                if (aa == inf || bb == inf) {{ r.v[0] = inf; }}"
+    )
+    .unwrap();
+    writeln!(s, "                else {{").unwrap();
+    writeln!(s, "                    let h = max(aa, bb);").unwrap();
+    writeln!(
+        s,
+        "                    if (h == 0.0) {{ r.v[0] = 0.0; }}"
     )
     .unwrap();
     writeln!(
         s,
-        "                if (h == 0.0) {{ r.v[0] = 0.0; }}"
+        "                    else {{ let as_ = a.v[0] / h; let bs = b.v[0] / h; r.v[0] = h * sqrt(as_ * as_ + bs * bs); }}"
     )
     .unwrap();
-    writeln!(
-        s,
-        "                else {{ let as_ = a.v[0] / h; let bs = b.v[0] / h; r.v[0] = h * sqrt(as_ * as_ + bs * bs); }}"
-    )
-    .unwrap();
+    writeln!(s, "                }}").unwrap();
     writeln!(s, "            }}").unwrap();
 
     // MAX, MIN

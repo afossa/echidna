@@ -77,3 +77,22 @@ fn l9_taylor_rem_zero_divisor_returns_nan() {
         "rem with zero-divisor Taylor must yield all-NaN"
     );
 }
+
+// L9 sibling on TaylorDyn: the dynamic-sized Taylor must receive the
+// same zero-divisor guard as the static-sized Taylor.
+#[cfg(feature = "taylor")]
+#[test]
+fn l9_taylor_dyn_rem_zero_divisor_returns_nan() {
+    use echidna::{TaylorDyn, TaylorDynGuard};
+
+    let _guard = TaylorDynGuard::<f64>::new(4);
+    let a = TaylorDyn::<f64>::from_coeffs(&[3.0, 1.0, 0.0, 0.0]);
+    let b = TaylorDyn::<f64>::from_coeffs(&[0.0, 1.0, 0.0, 0.0]);
+    let r = a % b;
+    let coeffs = r.coeffs();
+    assert!(
+        coeffs.iter().all(|c| c.is_nan()),
+        "TaylorDyn::rem with zero-divisor must yield all-NaN, got {:?}",
+        coeffs
+    );
+}
