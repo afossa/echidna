@@ -89,6 +89,18 @@ struct TapeMeta {
 fn sinh_f(x: f32) -> f32 { return (exp(x) - exp(-x)) * 0.5; }
 fn cosh_f(x: f32) -> f32 { return (exp(x) + exp(-x)) * 0.5; }
 
+// Precision-preserving EXPM1 / LN1P primals for small |x|, matching
+// forward.wgsl helpers. `exp(x) - 1` and `log(1 + x)` cancel
+// catastrophically as x → 0; the Taylor-series shortcut avoids that.
+fn expm1_f32(x: f32) -> f32 {
+    if abs(x) < 1e-4 { return x + 0.5 * x * x; }
+    return exp(x) - 1.0;
+}
+fn ln1p_f32(x: f32) -> f32 {
+    if abs(x) < 1e-4 { return x - 0.5 * x * x; }
+    return log(1.0 + x);
+}
+
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let bid = gid.x;
@@ -157,7 +169,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let bt = tangents[t_base + b_idx];
                 r = a / b;
                 let inv = 1.0 / b;
-                rt = inv * at - a * inv * inv * bt;
+                // `rt = at/b - a*bt/b² = at*inv - r*bt*inv`; avoids
+                // forming `inv*inv` which overflows at small |b|.
+                rt = inv * at - r * inv * bt;
             }
             case 6u /* REM */: {
                 let b = primals[p_base + b_idx];
@@ -231,17 +245,22 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
             case 17u /* EXP */: { r = exp(a); rt = r * at; }
             case 18u /* EXP2 */: { r = exp2(a); rt = r * log(2.0) * at; }
-            case 19u /* EXPM1 */: { r = exp(a) - 1.0; rt = (r + 1.0) * at; }
+            case 19u /* EXPM1 */: { r = expm1_f32(a); rt = (r + 1.0) * at; }
             case 20u /* LN */: { r = log(a); rt = at / a; }
             case 21u /* LOG2 */: { r = log2(a); rt = at / (a * log(2.0)); }
             case 22u /* LOG10 */: { r = log(a) / log(10.0); rt = at / (a * log(10.0)); }
-            case 23u /* LN1P */: { r = log(1.0 + a); rt = at / (1.0 + a); }
+            case 23u /* LN1P */: { r = ln1p_f32(a); rt = at / (1.0 + a); }
             case 24u /* SIN */: { r = sin(a); rt = cos(a) * at; }
             case 25u /* COS */: { r = cos(a); rt = -sin(a) * at; }
             case 26u /* TAN */: { r = tan(a); let c = cos(a); rt = at / (c * c); }
             case 27u /* ASIN */: { r = asin(a); rt = at / sqrt((1.0 - a) * (1.0 + a)); }
             case 28u /* ACOS */: { r = acos(a); rt = -at / sqrt((1.0 - a) * (1.0 + a)); }
-            case 29u /* ATAN */: { r = atan(a); rt = at / (1.0 + a * a); }
+            case 29u /* ATAN */: {
+                let aa = abs(a);
+                r = atan(a);
+                if aa > 1e8 { let inv = 1.0 / a; rt = at * inv * inv / (1.0 + inv * inv); }
+                else        { rt = at / (1.0 + a * a); }
+            }
             case 30u /* SINH */: { r = sinh_f(a); rt = cosh_f(a) * at; }
             case 31u /* COSH */: { r = cosh_f(a); rt = sinh_f(a) * at; }
             case 32u /* TANH */: { r = tanh(a); let c = cosh_f(a); rt = at / (c * c); }

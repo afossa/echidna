@@ -144,8 +144,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             case 5u /* DIV */: {
                 let b = values[v_base + b_idx];
                 let inv = 1.0 / b;
+                // `db = -a/b² = -r/b = -r * inv` — factoring through the
+                // primal `r = a/b` avoids forming `inv*inv`, which
+                // overflows when |b| is small.
                 da = inv;
-                db = -a * inv * inv;
+                db = -r * inv;
             }
             case 6u /* REM */: {
                 let b = values[v_base + b_idx];
@@ -233,7 +236,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             case 26u /* TAN */: { let c = cos(a); da = 1.0 / (c * c); }
             case 27u /* ASIN */: { da = 1.0 / sqrt((1.0 - a) * (1.0 + a)); }
             case 28u /* ACOS */: { da = -1.0 / sqrt((1.0 - a) * (1.0 + a)); }
-            case 29u /* ATAN */: { da = 1.0 / (1.0 + a * a); }
+            case 29u /* ATAN */: {
+                // For |a|>1e8, 1+a² overflows in f32; use inv-based form
+                // `inv²/(1+inv²)` that stays in-range.
+                let aa = abs(a);
+                if aa > 1e8 { let inv = 1.0 / a; da = inv * inv / (1.0 + inv * inv); }
+                else        { da = 1.0 / (1.0 + a * a); }
+            }
 
             // Hyperbolic
             case 30u /* SINH */: { da = cosh(a); }

@@ -714,7 +714,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                }}").unwrap();
     writeln!(s, "            }}").unwrap();
 
-    // HYPOT
+    // HYPOT. Primal is patched with a scaled formulation so
+    // `a.v[0] ~ 1e20` doesn't promote `a*a` to Inf before the `sqrt`
+    // kicks in. Higher-order jet coefficients still pass through
+    // `jet_mul` / `jet_add` / `jet_sqrt` and can overflow for extreme
+    // leading-order magnitudes; a full jet-wide rescale is a follow-up.
     writeln!(s, "            case 9u: {{").unwrap();
     writeln!(s, "                let b = jet_load(j_base + b_idx * K);").unwrap();
     writeln!(s, "                let asq = jet_mul(a, a);").unwrap();
@@ -723,7 +727,17 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                r = jet_sqrt(sum2);").unwrap();
     writeln!(
         s,
-        "                r.v[0] = sqrt(a.v[0] * a.v[0] + b.v[0] * b.v[0]);"
+        "                let h = max(abs(a.v[0]), abs(b.v[0]));"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "                if (h == 0.0) {{ r.v[0] = 0.0; }}"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "                else {{ let as_ = a.v[0] / h; let bs = b.v[0] / h; r.v[0] = h * sqrt(as_ * as_ + bs * bs); }}"
     )
     .unwrap();
     writeln!(s, "            }}").unwrap();
@@ -1617,7 +1631,10 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "            break;").unwrap();
     writeln!(s, "        }}").unwrap();
 
-    // HYPOT
+    // HYPOT. Primal patched with CUDA `hypot` (overflow-safe). Higher-
+    // order jet coefficients still pass through `jet_mul` / `jet_add` /
+    // `jet_sqrt` and can overflow for extreme leading-order magnitudes;
+    // a full jet-wide rescale is a follow-up.
     writeln!(s, "        case 9: {{").unwrap();
     writeln!(
         s,
@@ -1634,7 +1651,7 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     .unwrap();
     writeln!(
         s,
-        "            r.v[0] = sqrt(a.v[0]*a.v[0] + b.v[0]*b.v[0]); break;"
+        "            r.v[0] = hypot(a.v[0], b.v[0]); break;"
     )
     .unwrap();
     writeln!(s, "        }}").unwrap();

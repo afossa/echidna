@@ -490,7 +490,16 @@ impl CudaContext {
         let arg0: Vec<u32> = args.iter().map(|a| a[0]).collect();
         let arg1: Vec<u32> = args.iter().map(|a| a[1]).collect();
         let constants: Vec<f64> = tape.values_slice().to_vec();
-        let output_indices = tape.all_output_indices().to_vec();
+        let output_indices_raw = tape.all_output_indices().to_vec();
+        // Same defensive fallback as `upload_tape` — empty output_indices
+        // crashes `clone_htod`, so synthesise a single-output vector from
+        // the tape's scalar output_index.
+        let (output_indices, num_outputs) = if output_indices_raw.is_empty() {
+            (vec![tape.output_index() as u32], 1u32)
+        } else {
+            let n = output_indices_raw.len() as u32;
+            (output_indices_raw, n)
+        };
 
         Ok(CudaTapeBuffersF64 {
             opcodes: s.clone_htod(&opcodes).map_err(cuda_err)?,
@@ -505,7 +514,7 @@ impl CudaContext {
             // which cannot practically reach u32::MAX (~4.3B opcodes = ~17 GB).
             num_inputs: tape.num_inputs() as u32,
             num_variables: tape.num_variables_count() as u32,
-            num_outputs: output_indices.len() as u32,
+            num_outputs,
         })
     }
 }
@@ -525,18 +534,28 @@ impl GpuBackend for CudaContext {
     /// the `Result`-returning f64 variant.
     fn upload_tape(&self, data: &GpuTapeData) -> CudaTapeBuffers {
         let s = &self.stream;
+        // Defensive fallback matching wgpu: single-output tapes set
+        // `output_indices = []` and only populate `output_index`, but
+        // `clone_htod(&[])` panics on CUDA. Synthesise a one-element
+        // vector so the single-output path works uniformly across
+        // backends.
+        let (output_indices_src, num_outputs) = if data.output_indices.is_empty() {
+            (vec![data.output_index], 1u32)
+        } else {
+            // SAFETY(u32 cast): output_indices.len() is bounded by tape
+            // outputs count, which is at most num_variables (already u32).
+            (data.output_indices.clone(), data.output_indices.len() as u32)
+        };
         CudaTapeBuffers {
             opcodes: s.clone_htod(&data.opcodes).unwrap(),
             arg0: s.clone_htod(&data.arg0).unwrap(),
             arg1: s.clone_htod(&data.arg1).unwrap(),
             constants_f32: s.clone_htod(&data.constants).unwrap(),
-            output_indices: s.clone_htod(&data.output_indices).unwrap(),
+            output_indices: s.clone_htod(&output_indices_src).unwrap(),
             num_ops: data.num_ops,
             num_inputs: data.num_inputs,
             num_variables: data.num_variables,
-            // SAFETY(u32 cast): output_indices.len() is bounded by tape outputs count,
-            // which is at most num_variables (already u32).
-            num_outputs: data.output_indices.len() as u32,
+            num_outputs,
         }
     }
 

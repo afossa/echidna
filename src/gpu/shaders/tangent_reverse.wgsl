@@ -95,6 +95,18 @@ struct TapeMeta {
 fn sinh_f(x: f32) -> f32 { return (exp(x) - exp(-x)) * 0.5; }
 fn cosh_f(x: f32) -> f32 { return (exp(x) + exp(-x)) * 0.5; }
 
+// Precision-preserving EXPM1 / LN1P primals for small |x|, matching
+// forward.wgsl helpers. `exp(x) - 1` and `log(1 + x)` cancel
+// catastrophically as x → 0; the Taylor-series shortcut avoids that.
+fn expm1_f32(x: f32) -> f32 {
+    if abs(x) < 1e-4 { return x + 0.5 * x * x; }
+    return exp(x) - 1.0;
+}
+fn ln1p_f32(x: f32) -> f32 {
+    if abs(x) < 1e-4 { return x - 0.5 * x * x; }
+    return log(1.0 + x);
+}
+
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let bid = gid.x;
@@ -146,17 +158,21 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             case 16u: { let e=bitcast<i32>(bi); let n=f32(e); r=pow(a,n); rt=select(n*pow(a,n-1.0)*at, 0.0, e==0); }
             case 17u: { r=exp(a); rt=r*at; }
             case 18u: { r=exp2(a); rt=r*log(2.0)*at; }
-            case 19u: { r=exp(a)-1.0; rt=(r+1.0)*at; }
+            case 19u: { r=expm1_f32(a); rt=(r+1.0)*at; }
             case 20u: { r=log(a); rt=at/a; }
             case 21u: { r=log2(a); rt=at/(a*log(2.0)); }
             case 22u: { r=log(a)/log(10.0); rt=at/(a*log(10.0)); }
-            case 23u: { r=log(1.0+a); rt=at/(1.0+a); }
+            case 23u: { r=ln1p_f32(a); rt=at/(1.0+a); }
             case 24u: { r=sin(a); rt=cos(a)*at; }
             case 25u: { r=cos(a); rt=-sin(a)*at; }
             case 26u: { r=tan(a); let c=cos(a); rt=at/(c*c); }
             case 27u: { r=asin(a); rt=at/sqrt((1.0-a)*(1.0+a)); }
             case 28u: { r=acos(a); rt=-at/sqrt((1.0-a)*(1.0+a)); }
-            case 29u: { r=atan(a); rt=at/(1.0+a*a); }
+            case 29u: {
+                let aa = abs(a); r = atan(a);
+                if aa > 1e8 { let inv = 1.0 / a; rt = at * inv * inv / (1.0 + inv * inv); }
+                else        { rt = at / (1.0 + a * a); }
+            }
             case 30u: { r=sinh_f(a); rt=cosh_f(a)*at; }
             case 31u: { r=cosh_f(a); rt=sinh_f(a)*at; }
             case 32u: { r=tanh(a); let c=cosh_f(a); rt=at/(c*c); }
@@ -219,8 +235,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             case 5u /* DIV */: {
                 let b=primals[base+bi]; let bt=tans[base+bi];
                 let inv=1.0/b;
+                // Factor through `r = a/b` to drop one `inv` from each
+                // higher-order term: `-a*inv²` → `-r*inv`, and
+                // `2*a*inv³` → `2*r*inv²`. One factor of `inv*inv` still
+                // remains in the eps-eps terms (unavoidable second
+                // derivative), but `inv³` is eliminated.
                 da_re=inv; da_eps=-bt*inv*inv;
-                db_re=-a*inv*inv; db_eps=-at*inv*inv+2.0*a*bt*inv*inv*inv;
+                db_re=-r*inv; db_eps=-at*inv*inv+2.0*r*bt*inv*inv;
             }
             case 6u /* REM */: {
                 let b=primals[base+bi];
@@ -320,7 +341,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             case 26u /* TAN */: { let c=cos(a); let s=1.0/(c*c); da_re=s; da_eps=2.0*tan(a)*s*at; }
             case 27u /* ASIN */: { let t=sqrt((1.0-a)*(1.0+a)); da_re=1.0/t; da_eps=a*at/(t*t*t); }
             case 28u /* ACOS */: { let t=sqrt((1.0-a)*(1.0+a)); da_re=-1.0/t; da_eps=-a*at/(t*t*t); }
-            case 29u /* ATAN */: { let t=1.0+a*a; da_re=1.0/t; da_eps=-2.0*a*at/(t*t); }
+            case 29u /* ATAN */: {
+                let aa = abs(a);
+                if aa > 1e8 {
+                    let inv = 1.0 / a;
+                    let h = 1.0 + inv * inv;
+                    da_re = inv * inv / h;
+                    da_eps = -2.0 * inv * inv * inv * at / (h * h);
+                } else {
+                    let t = 1.0 + a * a;
+                    da_re = 1.0 / t;
+                    da_eps = -2.0 * a * at / (t * t);
+                }
+            }
             case 30u /* SINH */: { da_re=cosh_f(a); da_eps=sinh_f(a)*at; }
             case 31u /* COSH */: { da_re=sinh_f(a); da_eps=cosh_f(a)*at; }
             case 32u /* TANH */: { let c=cosh_f(a); let s=1.0/(c*c); da_re=s; da_eps=-2.0*tanh(a)*s*at; }
