@@ -54,14 +54,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computes the sum-of-squares on the bounded scaled jets, then
   scales the result back, mirroring `taylor_ops::taylor_hypot`.
   Both branches explicitly zero higher-order coefficients before
-  early-return (uninitialised `var r: JetK` hazard). **Documented
-  divergence**: at `hypot(0, 0)` with non-zero higher-order seeds,
-  CPU recursively shift-and-square unwinds to non-trivial higher-
-  order jets; GPU returns the zero jet. The recursion isn't
-  codegen-friendly without a `K`-bounded unroll. Pinned by an
-  `#[ignore]`-d test in `tests/gpu_stde.rs`. Pre-WS2 GPU output at
-  the singular origin was already silent NaN/garbage so this is
-  improvement-with-known-limit, not a behaviour break.
+  early-return (uninitialised `var r: JetK` hazard).
+- **GPU Taylor jet `HYPOT` function-domain-boundary cases** now match
+  CPU `taylor_ops::taylor_hypot` across both WGSL and CUDA codegen
+  (`src/gpu/taylor_codegen.rs`). Three boundary conventions closed:
+    - `hypot(Inf, finite)` — primal stays Inf (IEEE); higher-order
+      coefficients switched from zero to NaN, matching CPU's
+      `Inf * 0 = NaN` rescale-path output. NaN synthesised at
+      runtime via `inf - inf` (WGSL / CUDA) rather than a compile-
+      time bitcast, to stay portable across driver fast-math
+      settings.
+    - `hypot(0, 0)` with non-zero first-order seed — GPU previously
+      returned the zero jet; now emits a one-level shift-and-square
+      unroll that reproduces CPU's `|t| · hypot(a/t, b/t)` expansion.
+      CPU recursion is at most one level deep (the entry check
+      `a[1] != 0 || b[1] != 0` guarantees the recursive call lands
+      in the general `scale > 0` path), so the unroll is ~30 WGSL /
+      CUDA lines per backend rather than a `K`-bounded loop.
+    - `hypot(0, 0)` with all higher-order seeds also zero — GPU
+      previously returned the zero jet; now emits 0 primal + Inf
+      higher-order, matching CPU's `taylor_sqrt` at a zero leading
+      coefficient (`taylor_ops.rs:146-152`). Primal override brings
+      `c[0]` back to 0 from the `taylor_sqrt`'s implicit Inf.
+  Pinned by `ws9_{wgpu,cuda}_hypot_*` tests in `tests/gpu_stde.rs`
+  (zero-origin shift-and-square parity, Inf-finite NaN propagation,
+  deeper-order-zero Inf-higher convention). Callers that were
+  defensively treating GPU zero higher-order as a "singularity
+  detected" sentinel may see the new Inf/NaN outputs; CPU callers
+  at those inputs already observed the new values, so CPU+GPU now
+  behave identically.
 - **Internal**: `Dual`, `DualVec`, and `Reverse` now route per-component
   partial-derivative computation for `atan`, `atan2`, `asinh`, `acosh`,
   and `hypot` through the shared `src/kernels/` module — eliminating
