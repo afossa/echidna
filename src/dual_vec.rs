@@ -421,6 +421,14 @@ impl<F: Float, const N: usize> DualVec<F, N> {
     #[inline]
     pub fn hypot(self, other: Self) -> Self {
         let h = self.re.hypot(other.re);
+        if h == F::zero() {
+            // See `Dual::hypot`: singular point — short-circuit to zero
+            // tangent regardless of `eps` sign/finiteness.
+            return DualVec {
+                re: h,
+                eps: [F::zero(); N],
+            };
+        }
         let (da, db) = kernels::hypot_partials(self.re, other.re, h);
         DualVec {
             re: h,

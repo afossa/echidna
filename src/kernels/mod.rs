@@ -99,11 +99,18 @@ pub fn asinh_deriv<T: Float>(a: T) -> T {
 /// Derivative of `acosh(a) = ln(a + sqrt(a²-1))` with a large-|a|
 /// overflow-safe path.
 ///
-/// For `|a| ≤ 1e8`, returns `1/sqrt((a-1)·(a+1))`. The factored form
-/// (vs naive `a*a - 1`) avoids catastrophic cancellation near `a = 1`:
-/// at `a = 1 + ε`, `a*a` rounds to `1 + 2ε` and `a*a - 1 = 2ε` loses
-/// the `ε²` contribution, while `(a-1)·(a+1) = ε·(2 + ε)` retains it.
+/// For `|a| ≤ 1e8`, returns `1/sqrt(a²-1)` (defined for |a| ≥ 1).
 /// For `|a| > 1e8`, uses `u = 1/a` and `|u|/sqrt(1-u²)`.
+///
+/// Note: `Dual` and `DualVec` previously used the factored form
+/// `1/sqrt((a-1)·(a+1))` which retains precision near `a = 1` (the
+/// `a*a` form rounds `1 + 2ε + ε²` to `1 + 2ε` for small ε). The
+/// kernel intentionally uses the unfactored form to stay bit-for-bit
+/// consistent with the WGSL / CUDA shaders, which all compute
+/// `sqrt(a*a - 1)`. Adopting the factored form here would create
+/// CPU-vs-GPU drift near `a = 1` — the inverse of WS1's CPU-vs-CPU
+/// drift problem. A coordinated CPU+GPU upgrade is left as a
+/// follow-up workstream that requires GPU runtime verification.
 #[inline]
 pub fn acosh_deriv<T: Float>(a: T) -> T {
     let one = T::one();
@@ -111,6 +118,6 @@ pub fn acosh_deriv<T: Float>(a: T) -> T {
         let inv = one / a;
         inv.abs() / (one - inv * inv).sqrt()
     } else {
-        one / ((a - one) * (a + one)).sqrt()
+        one / (a * a - one).sqrt()
     }
 }

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (echidna)
+- **Internal**: `Dual`, `DualVec`, and `Reverse` now route per-component
+  partial-derivative computation for `atan`, `atan2`, `asinh`, `acosh`,
+  and `hypot` through the shared `src/kernels/` module — eliminating
+  the CPU-vs-CPU drift surface that produced three Phase 7 bugs (atan
+  large-|a|, hypot Inf, atan2 overflow). No public API change.
+  Side effect: `Dual::acosh` and `DualVec::acosh` previously used the
+  factored form `1/sqrt((a-1)·(a+1))` which retains precision near
+  `a = 1`; they now use `1/sqrt(a²-1)` to match `Reverse`, the opcode
+  dispatcher, and the WGSL/CUDA shaders. The factored-form precision
+  upgrade is deferred to a coordinated CPU+GPU follow-up so the four
+  WGSL shaders, three CUDA kernel sites, and the Taylor codegen
+  template stay in lockstep with the CPU kernel.
+
 ### Added (echidna-optim)
 - `OptimResult.diagnostics: SolverDiagnostics` exposes per-solver
   internal counts that were previously silent — curvature pair

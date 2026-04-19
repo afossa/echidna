@@ -409,6 +409,16 @@ impl<F: Float> Dual<F> {
     #[inline]
     pub fn hypot(self, other: Self) -> Self {
         let h = self.re.hypot(other.re);
+        if h == F::zero() {
+            // Singularity: kernel returns (0, 0) partials, but `0 * eps` is
+            // NaN if `self.eps` or `other.eps` is non-finite. Mirror
+            // `Dual::recip`'s explicit short-circuit to preserve the
+            // bit-for-bit zero-eps convention.
+            return Dual {
+                re: h,
+                eps: F::zero(),
+            };
+        }
         let (da, db) = kernels::hypot_partials(self.re, other.re, h);
         Dual {
             re: h,

@@ -797,6 +797,14 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
     }
 
     fn atan2(self, other: Self) -> Self {
+        // At the origin, atan2 gradient is mathematically undefined; return
+        // a tape-free constant (matches the previous behaviour bit-for-bit
+        // including `index() == CONSTANT` for downstream constant-folding
+        // and avoids growing the tape with a dead (0, 0)-partial entry).
+        let h = self.value.hypot(other.value);
+        if h == F::zero() {
+            return Reverse::constant(self.value.atan2(other.value));
+        }
         // `kernels::atan2_partials(a, b)` returns `(∂/∂a, ∂/∂b)` for the
         // math convention `atan2(a, b)`. With Rust's `f64::atan2(self=y,
         // other=x)`, `self` maps to kernel `a` and `other` to kernel `b`.
