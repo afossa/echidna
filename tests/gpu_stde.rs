@@ -1139,21 +1139,6 @@ fn check_hypot_jet_nonfinite_input(
 
 #[cfg(all(feature = "gpu-wgpu", feature = "stde"))]
 #[test]
-fn ws2_wgpu_hypot_inf_input_jet_returns_inf_and_zero_higher_order() {
-    let ctx = match gpu_context() {
-        Some(c) => c,
-        None => return,
-    };
-    // Pins the new Inf-branch code path through the JET evaluator
-    // (phase7_gpu_fixes covers Inf only via the non-jet `forward_batch`).
-    // A regression that drops the `r.v[0] = inf` assignment or the
-    // explicit zero loop will fail here.
-    check_hypot_jet_nonfinite_input(&ctx, f32::INFINITY, 1.0, "inf", "wgpu_hypot(Inf, 1) jet");
-    check_hypot_jet_nonfinite_input(&ctx, 1.0, f32::INFINITY, "inf", "wgpu_hypot(1, Inf) jet");
-}
-
-#[cfg(all(feature = "gpu-wgpu", feature = "stde"))]
-#[test]
 fn ws2_wgpu_hypot_nan_input_propagates_not_swallowed() {
     let ctx = match gpu_context() {
         Some(c) => c,
@@ -1171,17 +1156,6 @@ fn ws2_wgpu_hypot_nan_input_propagates_not_swallowed() {
 
 #[cfg(all(feature = "gpu-cuda", feature = "stde"))]
 #[test]
-fn ws2_cuda_hypot_inf_input_jet_returns_inf_and_zero_higher_order() {
-    let ctx = match cuda_context() {
-        Some(c) => c,
-        None => return,
-    };
-    check_hypot_jet_nonfinite_input(&ctx, f32::INFINITY, 1.0, "inf", "cuda_hypot(Inf, 1) jet");
-    check_hypot_jet_nonfinite_input(&ctx, 1.0, f32::INFINITY, "inf", "cuda_hypot(1, Inf) jet");
-}
-
-#[cfg(all(feature = "gpu-cuda", feature = "stde"))]
-#[test]
 fn ws2_cuda_hypot_nan_input_propagates_not_swallowed() {
     let ctx = match cuda_context() {
         Some(c) => c,
@@ -1194,17 +1168,17 @@ fn ws2_cuda_hypot_nan_input_propagates_not_swallowed() {
 
 #[cfg(all(feature = "gpu-wgpu", feature = "stde"))]
 #[test]
-#[ignore = "Documented WS2 divergence: CPU taylor_hypot recursively unwinds at hypot(0,0); GPU returns the zero jet. Run with `--ignored` to confirm the divergence is still in place."]
-fn ws2_wgpu_hypot_zero_origin_with_nonzero_seed_diverges_from_cpu() {
+fn ws9_wgpu_hypot_zero_origin_with_nonzero_seed_matches_cpu() {
     let ctx = match gpu_context() {
         Some(c) => c,
         None => return,
     };
-    // `hypot(0, 0)` with a non-zero seed: CPU emits non-trivial
-    // higher-order coefficients via shift-and-square; GPU returns
-    // zero jet. This test asserts the CPU-vs-GPU parity that the
-    // GPU code intentionally does NOT achieve — it WILL fail, and
-    // that failure is the contract the ignored marker pins.
+    // Post-WS9: `hypot(0, 0)` with a non-zero seed now routes
+    // through the WGSL `h == 0` shift-and-square unroll, matching
+    // CPU's `|t|·hypot(a/t, b/t)` expansion instead of returning
+    // the zero jet. The unroll is one level deep (the CPU recursion
+    // is at most one level since the entry check guarantees
+    // `scale > 0` in the recursive call).
     check_hypot_jet(&ctx, 0.0, 0.0, [1.0, 0.0], "wgpu_hypot(0,0) dx");
 }
 
@@ -1231,13 +1205,185 @@ fn ws2_cuda_hypot_extreme_magnitude_finite() {
 
 #[cfg(all(feature = "gpu-cuda", feature = "stde"))]
 #[test]
-#[ignore = "Documented WS2 divergence: see WGSL counterpart."]
-fn ws2_cuda_hypot_zero_origin_with_nonzero_seed_diverges_from_cpu() {
+fn ws9_cuda_hypot_zero_origin_with_nonzero_seed_matches_cpu() {
     let ctx = match cuda_context() {
         Some(c) => c,
         None => return,
     };
     check_hypot_jet(&ctx, 0.0, 0.0, [1.0, 0.0], "cuda_hypot(0,0) dx");
+}
+
+// ══════════════════════════════════════════════════════════════
+//  WS9 — GPU parity at function-domain-boundary edge cases
+// ══════════════════════════════════════════════════════════════
+//
+// Three cases where pre-WS9 GPU silently diverged from CPU at the
+// boundary of `hypot`'s function domain — CPU producing the
+// mathematically-informed "singular derivative" output (Inf or NaN
+// higher-order coefficients) while GPU emitted a zero jet. The
+// pre-WS9 divergences were pinned by `#[ignore]`-d tests documented
+// as "ws2" divergences; WS9 closes the gap and the tests now pin
+// parity under their `ws9_` rename above.
+//
+// The remaining two divergences — Inf-finite inputs and
+// deeper-order-zero inputs — are pinned by the tests below, using
+// a non-finite-tolerant parity helper since `check_hypot_jet`'s
+// `(gpu - cpu).abs() < tol` fails when CPU or GPU produces Inf/NaN.
+
+#[cfg(feature = "stde")]
+#[derive(Copy, Clone)]
+enum CoeffClass {
+    Zero,
+    Inf,
+    NaN,
+}
+
+#[cfg(feature = "stde")]
+fn check_hypot_jet_non_finite_higher(
+    ctx: &impl GpuBackend,
+    x0: f64,
+    y0: f64,
+    seed: [f32; 2],
+    primal_class: CoeffClass,
+    c1_class: CoeffClass,
+    c2_class: CoeffClass,
+    label: &str,
+) {
+    use num_traits::Float as _;
+    let f = |v: &[echidna::BReverse<f64>]| v[0].hypot(v[1]);
+    let x = [x0, y0];
+    let (tape, _) = record(f, &x);
+    let gpu_data = GpuTapeData::from_tape_f64_lossy(&tape).unwrap();
+    let tape_buf = ctx.upload_tape(&gpu_data);
+
+    let gpu_result = ctx
+        .taylor_forward_2nd_batch(&tape_buf, &[x0 as f32, y0 as f32], &seed, 1)
+        .unwrap();
+
+    let check = |v: f32, cls: CoeffClass, slot: &str| match cls {
+        CoeffClass::Zero => {
+            assert!(v == 0.0, "{label} {slot}: expected 0, got {v}")
+        }
+        CoeffClass::Inf => {
+            assert!(v.is_infinite(), "{label} {slot}: expected Inf, got {v}")
+        }
+        CoeffClass::NaN => {
+            assert!(v.is_nan(), "{label} {slot}: expected NaN, got {v}")
+        }
+    };
+    check(gpu_result.values[0], primal_class, "c0");
+    check(gpu_result.c1s[0], c1_class, "c1");
+    check(gpu_result.c2s[0], c2_class, "c2");
+}
+
+#[cfg(all(feature = "gpu-wgpu", feature = "stde"))]
+#[test]
+fn ws9_wgpu_hypot_inf_finite_propagates_nan() {
+    let ctx = match gpu_context() {
+        Some(c) => c,
+        None => return,
+    };
+    // `hypot(Inf, 1.0)` and `hypot(1.0, Inf)` with non-zero seed.
+    // Post-WS9: primal = Inf (IEEE `hypot(Inf, anything) = Inf`),
+    // higher-order = NaN (CPU rescale path `Inf * 0 = NaN`).
+    // Pre-WS9: GPU emitted zeros for higher-order. Both operand
+    // orderings are covered to exercise the symmetric
+    // `aa == inf || bb == inf` entry check — regressions that
+    // collapsed it to a single-operand check would fail one.
+    check_hypot_jet_non_finite_higher(
+        &ctx,
+        f32::INFINITY as f64,
+        1.0,
+        [1.0, 0.0],
+        CoeffClass::Inf,
+        CoeffClass::NaN,
+        CoeffClass::NaN,
+        "wgpu_hypot(Inf, 1)",
+    );
+    check_hypot_jet_non_finite_higher(
+        &ctx,
+        1.0,
+        f32::INFINITY as f64,
+        [1.0, 0.0],
+        CoeffClass::Inf,
+        CoeffClass::NaN,
+        CoeffClass::NaN,
+        "wgpu_hypot(1, Inf)",
+    );
+}
+
+#[cfg(all(feature = "gpu-cuda", feature = "stde"))]
+#[test]
+fn ws9_cuda_hypot_inf_finite_propagates_nan() {
+    let ctx = match cuda_context() {
+        Some(c) => c,
+        None => return,
+    };
+    check_hypot_jet_non_finite_higher(
+        &ctx,
+        f32::INFINITY as f64,
+        1.0,
+        [1.0, 0.0],
+        CoeffClass::Inf,
+        CoeffClass::NaN,
+        CoeffClass::NaN,
+        "cuda_hypot(Inf, 1)",
+    );
+    check_hypot_jet_non_finite_higher(
+        &ctx,
+        1.0,
+        f32::INFINITY as f64,
+        [1.0, 0.0],
+        CoeffClass::Inf,
+        CoeffClass::NaN,
+        CoeffClass::NaN,
+        "cuda_hypot(1, Inf)",
+    );
+}
+
+#[cfg(all(feature = "gpu-wgpu", feature = "stde"))]
+#[test]
+fn ws9_wgpu_hypot_deeper_order_zero_returns_inf_higher() {
+    let ctx = match gpu_context() {
+        Some(c) => c,
+        None => return,
+    };
+    // `hypot(0, 0)` with seed [0, 0]: inside the tape, both
+    // primal and first-order tangents are zero for hypot's inputs,
+    // so the GPU h==0 branch fires and the shift-and-square inner
+    // check `a.v[1] != 0 || b.v[1] != 0` fails (the tangents are
+    // also zero). Falls into the else-branch → 0 primal + Inf
+    // higher, matching CPU's `taylor_sqrt` convention at a true
+    // zero leading.
+    check_hypot_jet_non_finite_higher(
+        &ctx,
+        0.0,
+        0.0,
+        [0.0, 0.0],
+        CoeffClass::Zero,
+        CoeffClass::Inf,
+        CoeffClass::Inf,
+        "wgpu_hypot_deeper_zero",
+    );
+}
+
+#[cfg(all(feature = "gpu-cuda", feature = "stde"))]
+#[test]
+fn ws9_cuda_hypot_deeper_order_zero_returns_inf_higher() {
+    let ctx = match cuda_context() {
+        Some(c) => c,
+        None => return,
+    };
+    check_hypot_jet_non_finite_higher(
+        &ctx,
+        0.0,
+        0.0,
+        [0.0, 0.0],
+        CoeffClass::Zero,
+        CoeffClass::Inf,
+        CoeffClass::Inf,
+        "cuda_hypot_deeper_zero",
+    );
 }
 
 #[cfg(all(feature = "gpu-wgpu", feature = "stde"))]
