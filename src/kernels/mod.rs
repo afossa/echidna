@@ -99,7 +99,10 @@ pub fn asinh_deriv<T: Float>(a: T) -> T {
 /// Derivative of `acosh(a) = ln(a + sqrt(a²-1))` with a large-|a|
 /// overflow-safe path.
 ///
-/// For `|a| ≤ 1e8`, returns `1/sqrt(a²-1)` (defined for |a| ≥ 1).
+/// For `|a| ≤ 1e8`, returns `1/sqrt((a-1)·(a+1))`. The factored form
+/// (vs naive `a*a - 1`) avoids catastrophic cancellation near `a = 1`:
+/// at `a = 1 + ε`, `a*a` rounds to `1 + 2ε` and `a*a - 1 = 2ε` loses
+/// the `ε²` contribution, while `(a-1)·(a+1) = ε·(2 + ε)` retains it.
 /// For `|a| > 1e8`, uses `u = 1/a` and `|u|/sqrt(1-u²)`.
 #[inline]
 pub fn acosh_deriv<T: Float>(a: T) -> T {
@@ -108,6 +111,6 @@ pub fn acosh_deriv<T: Float>(a: T) -> T {
         let inv = one / a;
         inv.abs() / (one - inv * inv).sqrt()
     } else {
-        one / (a * a - one).sqrt()
+        one / ((a - one) * (a + one)).sqrt()
     }
 }
