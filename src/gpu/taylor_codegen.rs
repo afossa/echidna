@@ -727,37 +727,103 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {{
     writeln!(s, "                }}").unwrap();
     writeln!(s, "            }}").unwrap();
 
-    // HYPOT. Primal is patched with a scaled formulation so
-    // `a.v[0] ~ 1e20` doesn't promote `a*a` to Inf before the `sqrt`
-    // kicks in. Higher-order jet coefficients still pass through
-    // `jet_mul` / `jet_add` / `jet_sqrt` and can overflow for extreme
-    // leading-order magnitudes; a full jet-wide rescale is a follow-up.
+    // HYPOT. Full jet-wide max-rescale to keep every coefficient bounded
+    // even when `a.v[0] ~ 1e20`. Mirrors CPU `taylor_ops::taylor_hypot`:
+    // build `a_s = a/h`, `b_s = b/h`, compute `(a_s)² + (b_s)²`, sqrt,
+    // then scale back by `h`. Branch order matches the previous primal-
+    // only patch (Inf first, then NaN, then `h == 0`, then general) so
+    // IEEE `hypot(Inf, NaN) = Inf` and `hypot(NaN, 0) = NaN` are both
+    // preserved per `phase7_gpu_fixes` and the WS2 NaN-guard test.
+    //
+    // Known divergence at `h == 0`: CPU `taylor_hypot` does a recursive
+    // shift-and-square unwinding when `a[1] != 0 || b[1] != 0` to
+    // extract a `|t|` factor; GPU returns the zero jet. The recursion
+    // isn't codegen-friendly without a K-bounded unroll that explodes
+    // line count. Documented in CHANGELOG and pinned by the
+    // `#[ignore]`-d test in `tests/gpu_stde.rs::ws2_*`. A second
+    // smaller divergence: at finite-Inf inputs CPU produces NaN in
+    // higher-order jet coefficients (via `Inf * 0 = NaN` in the
+    // rescale path before the primal override); GPU returns 0. Both
+    // are mathematically valid choices at the boundary of the function
+    // domain.
     writeln!(s, "            case 9u: {{").unwrap();
     writeln!(s, "                let b = jet_load(j_base + b_idx * K);").unwrap();
-    writeln!(s, "                let asq = jet_mul(a, a);").unwrap();
-    writeln!(s, "                let bsq = jet_mul(b, b);").unwrap();
-    writeln!(s, "                let sum2 = jet_add(asq, bsq);").unwrap();
-    writeln!(s, "                r = jet_sqrt(sum2);").unwrap();
-    // Match IEEE `hypot`: `hypot(±Inf, x) = +Inf` for any x (including
-    // NaN), then `hypot(NaN, y) = NaN` for finite y. Checking Inf first
-    // and falling through to the rescaled formula (which propagates NaN
-    // naturally via max/divide) preserves both contracts.
     writeln!(s, "                let aa = abs(a.v[0]);").unwrap();
     writeln!(s, "                let bb = abs(b.v[0]);").unwrap();
     writeln!(s, "                let inf = bitcast<f32>(0x7f800000u);").unwrap();
+    // Inf branch: `r` is initialised by the dispatcher (`var r =
+    // jet_const(0.0)` at the top of the per-opcode loop) so the
+    // explicit zero loop is *redundant* on WGSL — kept for parity
+    // with CUDA (where `JetK r;` is genuinely uninitialised) and to
+    // make the contract explicit at the call site.
+    writeln!(s, "                if (aa == inf || bb == inf) {{").unwrap();
+    writeln!(s, "                    r.v[0] = inf;").unwrap();
+    for i in 1..k {
+        writeln!(s, "                    r.v[{i}] = 0.0;").unwrap();
+    }
+    // NaN detection: WGSL allows NaN comparisons to be "tame-folded"
+    // (drivers may compile `x != x` to a constant false), so the
+    // standard idiom is unreliable. Use a bit-pattern check on the
+    // pre-`abs` values — for f32, NaN has exponent `0xff` and a
+    // non-zero mantissa, so `(bits & 0x7fffffff) > 0x7f800000` is the
+    // unambiguous test (Inf is exactly `0x7f800000`).
+    writeln!(s, "                }} else if (").unwrap();
     writeln!(
         s,
-        "                if (aa == inf || bb == inf) {{ r.v[0] = inf; }}"
+        "                    (bitcast<u32>(a.v[0]) & 0x7fffffffu) > 0x7f800000u ||"
     )
     .unwrap();
-    writeln!(s, "                else {{").unwrap();
+    writeln!(
+        s,
+        "                    (bitcast<u32>(b.v[0]) & 0x7fffffffu) > 0x7f800000u"
+    )
+    .unwrap();
+    writeln!(s, "                ) {{").unwrap();
+    // NaN branch: without this, `max(NaN, 0) = 0` (Vulkan SPIR-V
+    // `OpFMax` returns the non-NaN argument per IEEE 754-2008 maxNum),
+    // causing a `hypot(NaN, 0)` input to fall into the `h == 0` branch
+    // and return the zero jet — silently swallowing the NaN that IEEE
+    // `hypot` requires propagating.
+    writeln!(s, "                    r.v[0] = a.v[0] + b.v[0];").unwrap();
+    for i in 1..k {
+        writeln!(s, "                    r.v[{i}] = 0.0;").unwrap();
+    }
+    writeln!(s, "                }} else {{").unwrap();
     writeln!(s, "                    let h = max(aa, bb);").unwrap();
-    writeln!(s, "                    if (h == 0.0) {{ r.v[0] = 0.0; }}").unwrap();
+    // Zero branch: explicit zero loop (defensive parity with CUDA).
+    writeln!(s, "                    if (h == 0.0) {{").unwrap();
+    for i in 0..k {
+        writeln!(s, "                        r.v[{i}] = 0.0;").unwrap();
+    }
+    writeln!(s, "                    }} else {{").unwrap();
+    // General branch: rescale, sum-of-squares, sqrt, scale back.
+    writeln!(s, "                        let inv_h = 1.0 / h;").unwrap();
+    writeln!(s, "                        let a_s = jet_scale(a, inv_h);").unwrap();
+    writeln!(s, "                        let b_s = jet_scale(b, inv_h);").unwrap();
     writeln!(
         s,
-        "                    else {{ let as_ = a.v[0] / h; let bs = b.v[0] / h; r.v[0] = h * sqrt(as_ * as_ + bs * bs); }}"
+        "                        let sum_sq = jet_add(jet_mul(a_s, a_s), jet_mul(b_s, b_s));"
     )
     .unwrap();
+    writeln!(s, "                        let r_s = jet_sqrt(sum_sq);").unwrap();
+    writeln!(s, "                        r = jet_scale(r_s, h);").unwrap();
+    // Primal override: `r.v[0] = jet_scale(r_s, h).v[0]` is bit-
+    // equivalent to the explicit rescale formula below (same arithmetic,
+    // same rounding under default WGSL contraction settings), so this
+    // assignment is technically redundant. Keep it as a regression
+    // guard against future jet-helper refactors that might change
+    // rounding behaviour.
+    writeln!(
+        s,
+        "                        let a_s0 = a.v[0] * inv_h; let b_s0 = b.v[0] * inv_h;"
+    )
+    .unwrap();
+    writeln!(
+        s,
+        "                        r.v[0] = h * sqrt(a_s0 * a_s0 + b_s0 * b_s0);"
+    )
+    .unwrap();
+    writeln!(s, "                    }}").unwrap();
     writeln!(s, "                }}").unwrap();
     writeln!(s, "            }}").unwrap();
 
@@ -1657,10 +1723,19 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     writeln!(s, "            break;").unwrap();
     writeln!(s, "        }}").unwrap();
 
-    // HYPOT. Primal patched with CUDA `hypot` (overflow-safe). Higher-
-    // order jet coefficients still pass through `jet_mul` / `jet_add` /
-    // `jet_sqrt` and can overflow for extreme leading-order magnitudes;
-    // a full jet-wide rescale is a follow-up.
+    // HYPOT. Full jet-wide max-rescale to keep every coefficient bounded
+    // even when `a.v[0] ~ 1e20`. Mirrors CPU `taylor_ops::taylor_hypot`
+    // and the WGSL emitter above. Branch order: Inf first, then NaN,
+    // then `h == 0`, then general — preserves IEEE `hypot(Inf, NaN) = Inf`
+    // and `hypot(NaN, 0) = NaN`.
+    //
+    // Known divergence at `h == 0`: CPU `taylor_hypot` does recursive
+    // shift-and-square unwinding when seeds are non-zero; GPU returns
+    // the zero jet. Documented in CHANGELOG and pinned by the
+    // `#[ignore]`-d test in `tests/gpu_stde.rs::ws2_*`. Smaller
+    // divergence at finite-Inf inputs: CPU produces NaN higher-order
+    // (via `Inf * 0 = NaN` in the rescale path); GPU returns 0. Both
+    // are mathematically valid choices at the function-domain boundary.
     writeln!(s, "        case 9: {{").unwrap();
     writeln!(
         s,
@@ -1670,12 +1745,54 @@ fn write_cuda_main_kernel(s: &mut String, k: usize) {
     for c in 0..k {
         writeln!(s, "            b.v[{c}] = jets[b_off + {c}];").unwrap();
     }
+    writeln!(s, "            F aa = fabs(a.v[0]);").unwrap();
+    writeln!(s, "            F bb = fabs(b.v[0]);").unwrap();
+    // CUDA: `isinf` is the correct way to detect ±Inf for both f32 and f64.
+    writeln!(s, "            if (isinf(aa) || isinf(bb)) {{").unwrap();
+    // Inf branch: explicit zero loop for higher-order (`JetK r;` at the
+    // top of the dispatcher is uninitialised stack memory). NVRTC's
+    // default program doesn't expose the `INFINITY` macro, so synthesise
+    // +Inf via fmax — at least one of {aa, bb} is +Inf in this branch
+    // and both are non-negative `fabs` results, so fmax returns +Inf.
+    writeln!(s, "                r.v[0] = fmax(aa, bb);").unwrap();
+    for i in 1..k {
+        writeln!(s, "                r.v[{i}] = (F)0;").unwrap();
+    }
+    writeln!(s, "            }} else if (isnan(aa) || isnan(bb)) {{").unwrap();
+    // NaN branch: without this, `fmax(NaN, 0) = 0` (IEEE 754-2008
+    // maxNum returns the non-NaN argument), causing `hypot(NaN, 0)`
+    // to enter the `h == 0` branch and silently return the zero jet
+    // — swallowing the NaN that IEEE `hypot` requires propagating.
+    // `a.v[0] + b.v[0]` is the simplest NaN-propagator (NaN + anything
+    // = NaN; both NaN: still NaN).
+    writeln!(s, "                r.v[0] = a.v[0] + b.v[0];").unwrap();
+    for i in 1..k {
+        writeln!(s, "                r.v[{i}] = (F)0;").unwrap();
+    }
+    writeln!(s, "            }} else {{").unwrap();
+    writeln!(s, "                F h = fmax(aa, bb);").unwrap();
+    writeln!(s, "                if (h == (F)0) {{").unwrap();
+    for i in 0..k {
+        writeln!(s, "                    r.v[{i}] = (F)0;").unwrap();
+    }
+    writeln!(s, "                }} else {{").unwrap();
+    writeln!(s, "                    F inv_h = (F)1 / h;").unwrap();
+    writeln!(s, "                    JetK a_s = jet_scale(a, inv_h);").unwrap();
+    writeln!(s, "                    JetK b_s = jet_scale(b, inv_h);").unwrap();
     writeln!(
         s,
-        "            r = jet_sqrt(jet_add(jet_mul(a,a), jet_mul(b,b)));"
+        "                    JetK sum_sq = jet_add(jet_mul(a_s, a_s), jet_mul(b_s, b_s));"
     )
     .unwrap();
-    writeln!(s, "            r.v[0] = hypot(a.v[0], b.v[0]); break;").unwrap();
+    writeln!(s, "                    JetK r_s = jet_sqrt(sum_sq);").unwrap();
+    writeln!(s, "                    r = jet_scale(r_s, h);").unwrap();
+    // CUDA: `hypot()` is a load-bearing primal override — NVRTC's
+    // intrinsic rounds per-device and may differ by a ULP from the
+    // explicit rescale formula even at moderate magnitudes.
+    writeln!(s, "                    r.v[0] = hypot(a.v[0], b.v[0]);").unwrap();
+    writeln!(s, "                }}").unwrap();
+    writeln!(s, "            }}").unwrap();
+    writeln!(s, "            break;").unwrap();
     writeln!(s, "        }}").unwrap();
 
     // MAX, MIN
