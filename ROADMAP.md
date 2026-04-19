@@ -1,188 +1,284 @@
 # Echidna Roadmap
 
 Forward-looking workstreams explicitly scoped and deferred from prior
-bug-hunt cycles. Each item here carries enough context to re-enter
-cold, has a concrete "done" condition, and is independent enough to
-ship on its own branch.
+bug-hunt and review-fix cycles. Each item here carries enough context
+to re-enter cold, has a concrete "done" condition, and is independent
+enough to ship on its own branch.
 
 When starting an item, check the "Prior context" for the commit(s)
-that introduced the partial fix so you can diff against what was left
-behind.
+or PR(s) that introduced the partial fix so you can diff against
+what was left behind.
 
 ---
 
-## WS 1 — R2 full migration (CPU SSOT expansion)
+## Completed
 
-**Deferred from**: Cycle 6 Phase 9 (commit `9b17193`).
-
-**Prior context**: `src/kernels/mod.rs` was introduced with
-`hypot_partials`, `atan2_partials`, `atan_deriv`, `asinh_deriv`,
-`acosh_deriv`. Only `src/opcode.rs` was migrated to call them.
-
-**Problem**: `src/dual.rs`, `src/dual_vec.rs`, `src/laurent.rs`,
-`src/breverse.rs`, `src/reverse.rs`, and `src/traits/num_traits_impls.rs`
-all still carry their own inline copies of these formulas. A CPU-side
-fix landed in any one of them will drift from the others — exactly
-the class of bug Phase 7 found three times (atan large-|a|, div
-small-|b|, hypot Inf). `tests/gpu_cpu_parity.rs` guards GPU drift
-against CPU but does not guard CPU drift against itself.
-
-**Approach**:
-1. One commit per AD type. Order: `Dual` → `DualVec` → `BReverse` +
-   `traits/num_traits_impls.rs` → `Reverse` → `Laurent`.
-2. Pattern: call the kernel helper for the partial-derivative pair,
-   keep per-type tangent/adjoint composition as-is. Example:
-   ```rust
-   impl<F: Float> Dual<F> {
-       pub fn hypot(self, other: Self) -> Self {
-           let h = self.re.hypot(other.re);
-           let (da, db) = kernels::hypot_partials(self.re, other.re, h);
-           Dual { re: h, eps: da * self.eps + db * other.eps }
-       }
-   }
-   ```
-3. `Laurent::hypot` uses jet rescaling; may need a `kernels::hypot_jet`
-   variant. Handle last so the simpler cases pin the pattern.
-
-**Done when**: `grep -n 'a.hypot\|atan2\|atan_deriv\|asinh_deriv\|acosh_deriv'`
-across `src/{dual,dual_vec,laurent,breverse,reverse}.rs` and
-`src/traits/num_traits_impls.rs` shows only kernel calls, not inline
-formulas.
-
-**Effort**: Medium. 5 commits, ~20-30 function bodies.
-**Risk**: Low. `tests/gpu_cpu_parity.rs` + existing per-type unit
-tests catch any regression.
+| WS | Title | Merged | One-line summary |
+|----|-------|--------|------------------|
+| WS 1 | R2 full migration (CPU SSOT expansion) | PR #63 | `Dual` / `DualVec` / `Reverse` route atan/atan2/asinh/acosh/hypot through `src/kernels/`; coordinated CPU + WGSL + CUDA + Taylor-codegen acosh factored-form upgrade |
+| WS 2 | Higher-order Taylor HYPOT GPU rescale | PR #64 | WGSL + CUDA Taylor jet HYPOT max-rescale; explicit IEEE NaN-propagation guard on both backends |
+| WS 3 | Richer error types for piggyback / sparse_implicit | PR #62 | `Option<T>` → `Result<T, PiggybackError | SparseImplicitError>`; per-module `#[non_exhaustive]` enums; `Send + Sync` compile-time-asserted |
+| WS 4 | Solver diagnostics (L-BFGS / Newton silent-filter surface) | PR #60 | `OptimResult.diagnostics: SolverDiagnostics` per-solver counters |
 
 ---
 
-## WS 2 — Higher-order Taylor HYPOT rescale on GPU
+## Active workstreams
 
-**Deferred from**: Cycle 6 Phase 7 Commit 1 (commit `a4ed834`).
-
-**Prior context**: The primal (`r.v[0]`) of Taylor HYPOT was fixed
-with max-rescale (WGSL) / `hypot()` builtin (CUDA). The comment in
-`src/gpu/taylor_codegen.rs` explicitly flags higher-order coefficients
-as a follow-up.
-
-**Problem**: Higher-order jet coefficients still pass through
-`jet_mul(a, a)` / `jet_add` / `jet_sqrt` without rescaling. For
-`a.v[0] ~ 1e20` or similar, `a.v[0] * a.v[0] = Inf` in f32, so
-`v[1]..v[K-1]` can produce spurious Inf / NaN.
-
-**Approach**:
-1. Compute `h = max(|a.v[0]|, |b.v[0]|)` once.
-2. Build scaled jets `a_s = a * (1/h)`, `b_s = b * (1/h)` via a
-   `jet_scale` helper (new).
-3. Compute `sum_sq = jet_add(jet_mul(a_s, a_s), jet_mul(b_s, b_s))`
-   on the scaled jets — leading-order magnitude is bounded ≤ 2.
-4. `r_s = jet_sqrt(sum_sq)`, then scale back: `r = r_s * h`.
-5. Primal stays patched as today (the primal path never overflows
-   after the Phase 7 fix).
-
-**Done when**: A GPU parity test at `hypot(1e20, 1e19)` reads
-`v[1] ≈ 0.95` and `v[2]..v[K-1]` finite, matching CPU Taylor to the
-documented ULP budget.
-
-**Effort**: Medium. ~100 lines of codegen per backend (WGSL + CUDA).
-Needs runtime verification on both.
-**Risk**: Moderate. Codegen complexity; high-order Taylor failures
-can hide from simple parity tests.
+The remainder are deferrals surfaced during WS1–4 review-fix cycles
+that were intentionally not folded into those PRs — either because
+they were out of scope, would have required GPU recoordination after
+the in-flight fix, or because the verified score was below the
+auto-fix threshold. None block any current work.
 
 ---
 
-## WS 3 — Richer error types for piggyback / sparse_implicit
+## WS 5 — Optim error-API enrichment (P1)
 
-**Deferred from**: Cycle 6 Phase 6 (commit `f300f4a`) and Phase 8
-review. Both the Phase 6 review-fix and the Phase 7/8 retroactive
-review flagged the Option-collapse issue.
+**Deferred from**: WS3 review-fix (PR #62, multi-agent review cycle).
 
-**Prior context**: `piggyback_tangent_solve`,
-`piggyback_adjoint_solve`, `piggyback_forward_adjoint_solve`, and
-`build_fz_and_factor` + the three `implicit_*_sparse` callers all
-return `Option<T>`. Failure modes that should be distinguishable
-(primal divergence, tangent divergence, adjoint divergence, structural
-singularity, numeric singularity, residual exceeds tolerance, max-iter
-exhausted) collapse to a single `None`.
+**Prior context**: WS3 converted `piggyback_*_solve` and
+`implicit_*_sparse` to `Result<T, *Error>` with per-module enums.
+The variant set is correct and the `Send + Sync` / `#[non_exhaustive]`
+machinery is in place, but several diagnostic-richness improvements
+were deferred so the breaking-change PR stayed focused. Each item
+below is verified ≥80 in the WS3 review (or just below threshold
+but high-value); none block current callers.
 
-**Problem**: Callers can't decide whether to retry (numeric blip with
-different seed), re-formulate (structural singularity), or give up
-(non-contractive).
+**Problem**: As shipped, the error variants are *distinguishable*
+but not maximally *actionable*. A user catching `Residual` doesn't
+know how far over tolerance they are without re-deriving the
+threshold; a user catching `PrimalDivergence` doesn't know whether
+the iteration overflowed (Inf) or NaN'd from cancellation; chaining
+through `?` loses the underlying faer error context.
 
 **Approach**:
-1. Define `enum PiggybackError { PrimalDivergence, TangentDivergence,
-   AdjointDivergence, MaxIterations }` in
-   `echidna-optim/src/piggyback.rs`.
-2. Define `enum SparseImplicitError { StructuralSingular,
-   NumericSingular { residual: f64 }, NumericBlowup, FactorFailed }`
-   in `echidna-optim/src/sparse_implicit.rs`.
-3. Change return types from `Option<T>` to `Result<T, E>`. Update
-   internal `return None` sites to `return Err(Error::Variant)`.
-4. Update existing tests (`.is_none()` → `.is_err()` in most cases).
+1. **`SparseImplicitError::Residual` payload**: extend from
+   `{ relative_residual: f64 }` to
+   `{ relative_residual: f64, tolerance: f64, dimension: usize }`.
+   `#[non_exhaustive]` allows additive expansion; threshold
+   computation already lives at the construction site
+   (`src/sparse_implicit.rs` around line 288).
+2. **`PiggybackError` divergence-variant payloads**: extend from
+   `{ iteration: usize }` to
+   `{ iteration: usize, last_norm: f64 }` for `PrimalDivergence` /
+   `TangentDivergence` / `AdjointDivergence`. Captures the failing
+   scalar so users can distinguish Inf-overflow from NaN-cancellation.
+3. **`std::error::Error::source()` chain**: store the underlying
+   faer error as `Box<dyn Error + Send + Sync + 'static>` on
+   `SparseImplicitError::FactorFailed` and `StructuralFailure`;
+   implement `source()` to expose it. faer 0.24 `LuError` carries
+   `SymbolicSingular { index: usize }` which currently gets
+   discarded by `map_err(|_| ...)`.
+4. **`TangentDivergence` solver-path test**: construct a tape where
+   primal stays finite but tangent overflows. Acknowledged-hard
+   in the WS3 plan but tractable: a contraction with `G_x` driven
+   by a non-zero `x_dot` carrying overflow-prone entries.
 
-**Done when**: No `Option<_>` return on public functions in those two
-files; error enums exported; piggyback + sparse_implicit tests use
-`.is_err()` or pattern-match specific variants.
+**Done when**: Each enum-payload addition pinned by a unit test
+that pattern-matches the new fields; `source()` chain returns the
+underlying faer error in a smoke test.
 
-**Effort**: Small-to-medium. ~30-50 lines of types + method signature
-changes. Breaking API (minor version bump in echidna-optim).
-**Risk**: Low. Pure API enrichment.
+**Effort**: Small-to-medium. ~50-80 lines + tests.
+**Risk**: Low. `#[non_exhaustive]` makes payload additions
+non-breaking for callers using `..` in pattern matches; `..` is
+the dominant idiom in the existing test suite.
 
 ---
 
-## WS 4 — Solver diagnostics (L-BFGS / Newton silent-filter surface) ✓ DONE
+## WS 6 — Optim error-API consistency polish (P2)
 
-Merged via PR #60 (commit `ee95611`). `OptimResult.diagnostics` now
-exposes per-solver counters via the `SolverDiagnostics` enum:
-`LbfgsDiagnostics` (pairs accepted/rejected/evicted, gamma clamps,
-line-search backtracks), `NewtonDiagnostics` (fallback steps, line-
-search backtracks), `TrustRegionDiagnostics` (CG iters, two split
-radius-shrink branches). `OptimResult` is `#[non_exhaustive]`.
+**Deferred from**: WS3 review-fix (PR #62) architecture review.
 
-**Original problem statement:**
+**Prior context**: WS3's two error enums were designed independently
+(`PiggybackError` first, then `SparseImplicitError`) and use
+divergent naming axes and structural choices. None of these are
+correctness bugs; they're cleanup that becomes harder once external
+callers depend on the names.
 
-**Deferred from**: Cycle 6 Phase 6 (commit `f300f4a`), error-handling
-audit.
-
-**Prior context**: L-BFGS silently drops curvature pairs that fail
-`sy > eps * sqrt(ss * yy)` and silently clamps gamma to
-`[1e-3, 1e3]`. Newton silently substitutes steepest-descent when the
-LU solve returns a non-descent direction. None of these are visible
-to the caller.
-
-**Problem**: A solver that filters every pair reports
-`TerminationReason::GradientNorm` but has actually been running
-steepest-descent-with-gamma-1-clamp the whole time. A solver hitting
-Newton fallback on every iteration reports success but has been
-doing something suboptimal. No way for a user to tell.
+**Problem**:
+- `PiggybackError::MaxIterations { z_norm: Option<f64>, lam_norm: Option<f64> }` allows the impossible `(None, None)` state in the type system. WS4's `SolverDiagnostics` enum solved the analogous problem by per-solver variants — WS3 chose differently.
+- `MaxIterations` Display uses `{:?}` on `Option<f64>`, leaking Rust syntax (`"z_norm = Some(0.0034)"`) into user-facing error messages.
+- `PiggybackError` uses `*Divergence` / `MaxIterations` (failure-class noun); `SparseImplicitError` uses `*Failure` / `*Failed` / `*Singular` / `Residual` (mixed: noun-noun, verb-past-participle, adjective, data-named). No single naming axis.
+- `assert_send_sync` block (7 lines) is copy-pasted in `piggyback.rs` and `sparse_implicit.rs`. Other workspace error types (`ClarkeError`, `GpuError`) lack the guard entirely.
 
 **Approach**:
-1. Add `pub struct SolverDiagnostics { pub pairs_accepted: usize,
-   pub pairs_rejected: usize, pub gamma_clamp_hits: usize,
-   pub fallback_steps: usize }` in `echidna-optim/src/result.rs`.
-2. Add `pub diagnostics: SolverDiagnostics` to `OptimResult`. Default
-   all-zero for solvers that don't populate it (trust_region, etc.).
-3. Wire L-BFGS to increment `pairs_accepted` / `pairs_rejected` /
-   `gamma_clamp_hits`. Wire Newton to increment `fallback_steps`.
-4. Add a regression test that constructs an adversarial L-BFGS
-   problem (e.g. pure steepest-descent by saturating the curvature
-   filter) and asserts `pairs_rejected >= N`.
+1. Split `MaxIterations` into `MaxIterationsTangent { z_norm: f64 }`,
+   `MaxIterationsAdjoint { lam_norm: f64 }`,
+   `MaxIterationsForwardAdjoint { z_norm: f64, lam_norm: f64 }`.
+   `#[non_exhaustive]` absorbs the variant proliferation.
+2. Rewrite `MaxIterations*` Display to emit only the populated
+   norm(s) without `Some(_)`/`None` syntax, e.g.
+   `"piggyback: max_iter exceeded (z_norm = 3.4e-3); raise max_iter or relax tol"`.
+3. Pick one naming axis (suggested:
+   `<Mode><FailureClass>`) and rename across both enums:
+   - `SparseImplicitError`: `StructuralFailure` →
+     `StructuralSingular`, `FactorFailed` → `FactorSingular`,
+     `Residual` → `ResidualExceeded`.
+   - `PiggybackError`: `MaxIterations*` → `IterationsExhausted*`.
+4. Hoist `assert_send_sync!` to a workspace macro in
+   `echidna-optim/src/lib.rs` (or a small `util` module). Apply to
+   `ClarkeError` and `GpuError` while there.
 
-**Done when**: `OptimResult.diagnostics` exposes the counts for the
-relevant solvers; regression test pins the adversarial case.
+**Done when**: Both enums use one naming axis; `MaxIterations` is
+typestate-impossible to construct in a meaningless shape; Display
+output contains no Rust internal syntax; one shared macro covers all
+four error types.
 
-**Effort**: Small. ~30 lines across result.rs + lbfgs.rs + newton.rs.
-**Risk**: Low. Non-breaking (new field is ignored by callers that
-don't read it).
+**Effort**: Small. ~50 lines + test updates. Breaking API (variant
+renames are visible to callers).
+**Risk**: Low. Caught entirely by `cargo check` if any caller
+pattern-matches the renamed variants.
+
+---
+
+## WS 7 — Dense `implicit.rs` Result migration
+
+**Deferred from**: WS3 review (PR #62, architecture finding #1) —
+explicitly scoped out of WS3 per ROADMAP boundary.
+
+**Prior context**: WS3 migrated `implicit_*_sparse` to
+`Result<T, SparseImplicitError>` but left dense `implicit.rs` on
+`Option<T>`. The two paths now have asymmetric APIs: a user
+switching between dense/sparse for performance hits an API
+discontinuity for what's logically the same operation.
+
+**Problem**: `implicit_jacobian`, `implicit_tangent`,
+`implicit_adjoint`, `implicit_hvp`, `implicit_hessian` (all in
+`echidna-optim/src/implicit.rs`) still return `Option<Vec<...>>`.
+Their failure modes (singular F_z, NaN propagation, dimension
+mismatch) collapse to the same `None` WS3 fixed for the sparse
+path.
+
+**Approach**: Mirror WS3's sparse design. Define
+`enum ImplicitError { StructuralSingular, NumericSingular,
+Residual { ... } }` (or share `SparseImplicitError` with a rename
+to `ImplicitError` and a re-export under both names — pick after
+checking actual sparse usage). Convert the five public functions.
+Update `tests/implicit.rs`.
+
+**Done when**: No `Option<_>` return on public functions in
+`echidna-optim/src/implicit.rs`; tests use `.is_err()` / variant
+pinning per the WS3 pattern.
+
+**Effort**: Small-to-medium. ~30 lines + ~10 test conversions.
+Breaking API (minor-version bump in echidna-optim — pre-1.0 so
+0.9.0 → 0.10.0).
+**Risk**: Low. Same migration mechanic as WS3, well-rehearsed.
+
+---
+
+## WS 8 — `Laurent::hypot` kernel migration
+
+**Deferred from**: WS1 (PR #63), explicit defer in the plan.
+
+**Prior context**: WS1 migrated 15 inline derivative formulas
+across `Dual`, `DualVec`, and `Reverse` (via `num_traits_impls.rs`)
+to call `src/kernels/`. The `Laurent::hypot` implementation
+(`src/laurent.rs` lines 761–799) was intentionally not migrated —
+it operates on jet-coefficient arrays with a max-rescale that
+isn't expressible via the existing scalar `kernels::hypot_partials`
+helper.
+
+**Problem**: `Laurent::hypot` is the last CPU-side HYPOT
+implementation that doesn't route through `kernels`. A future
+correctness fix to `hypot` semantics on CPU has to be applied in
+two places: the kernel (which propagates to Dual/DualVec/Reverse
+via WS1 routing) and `Laurent::hypot` separately. WS1 closed three
+of four CPU drift surfaces; this is the fourth.
+
+**Approach**:
+1. Define `kernels::hypot_jet_rescale<F: Float>(a_coeffs: &[F],
+   b_coeffs: &[F], out: &mut [F])` (or similar shape — consult
+   existing `taylor_ops::taylor_hypot` for the canonical jet-array
+   API). The function takes the two coefficient arrays, applies
+   max-rescale, computes `sqrt(sum_sq)` jet-wide, and writes the
+   result.
+2. `Laurent::hypot` calls the new helper.
+3. Optionally: `Taylor::hypot` already delegates to
+   `taylor_ops::taylor_hypot` — confirm whether it should also
+   route through `kernels::hypot_jet_rescale` for SSOT (probably
+   yes; the two implementations differ slightly in how they handle
+   the `scale == 0` case).
+
+**Done when**: `Laurent::hypot` body is a kernel call; no inline
+max-rescale arithmetic remains in `src/laurent.rs` for hypot.
+
+**Effort**: Small. ~40 lines + 1-2 test points.
+**Risk**: Low. `tests/laurent_*` already exercises `Laurent::hypot`.
+**Priority**: Low — single call site, no known bug, future-proofing
+only.
+
+---
+
+## WS 9 — GPU Taylor edge cases at the function-domain boundary
+
+**Deferred from**: WS2 (PR #64), pinned by `#[ignore]`-d test +
+documented in codegen comments.
+
+**Prior context**: WS2 applied jet-wide max-rescale to GPU Taylor
+HYPOT. Two corner cases remain where GPU output diverges from CPU
+`taylor_ops::taylor_hypot` — both at the boundary of the function
+domain where derivatives are mathematically undefined:
+
+1. `hypot(0, 0)` with non-zero higher-order seeds (e.g. JVP through
+   the origin along a non-zero direction): CPU recursively
+   shift-and-square unwinds to extract a `|t|` factor; GPU returns
+   the zero jet. Pinned by
+   `tests/gpu_stde.rs::ws2_*_hypot_zero_origin_with_nonzero_seed_diverges_from_cpu`
+   (`#[ignore]`-d).
+2. Finite/Inf inputs with non-zero higher-order seeds: CPU produces
+   NaN higher-order coefficients via `Inf * 0 = NaN` in the rescale
+   path; GPU returns 0. Documented in codegen comments at the
+   relevant emission sites.
+
+**Problem**: Neither divergence is a bug per IEEE — derivatives at
+the function-domain boundary are conventionally undefined. But
+having GPU and CPU disagree silently means downstream code that
+relies on either convention is platform-dependent.
+
+**Approach**:
+1. **For zero-origin recursion**: K-bounded unroll of the
+   shift-and-square in the codegen — emit a separate code block
+   per `K` value the user requests. ~30 lines per `K`, K ≤ 6
+   currently supported, so ~180 lines of WGSL + same in CUDA.
+   Verify against the existing `#[ignore]`-d test (un-ignore it
+   when the implementation lands).
+2. **For finite-Inf NaN**: change GPU Inf branch to set
+   `r.v[i] = NaN` for `i >= 1`. WGSL: `bitcast<f32>(0x7fc00000u)`.
+   CUDA: `(F)(0.0/0.0)` or NVRTC bit-cast. Add a parity test that
+   asserts `c1.is_nan() && c2.is_nan()` at `hypot(Inf, finite)`.
+
+**Done when**: Either (a) both divergences fixed and the
+`#[ignore]`-d test passes; or (b) explicit decision to keep the
+divergence with the rationale captured in a follow-up note (e.g.
+"performance not worth it — function-domain boundary is
+ill-conditioned anyway").
+
+**Effort**: Medium for (1) (codegen complexity + GPU runtime
+verification on vast.ai); Small for (2) (one branch per backend +
+one test).
+**Risk**: Moderate for (1) — recursive unwinding logic is the kind
+of subtle codegen that can hide bugs from simple parity tests, same
+risk profile as the original WS2.
+**Priority**: Low. Both cases are at the function-domain boundary;
+no realistic user has reported either. Track to ensure they don't
+regress further or surprise a future user.
 
 ---
 
 ## Suggested order
 
-1. ~~WS 4~~ — done (PR #60).
-2. **WS 3** — small-to-medium, breaking but contained.
-3. **WS 1** — medium, mechanical, well-guarded.
-4. **WS 2** — medium, needs GPU instance up; schedule around vast.ai
-   availability.
+1. **WS 7** — quickest mechanical migration; closes a real API
+   discontinuity that already exists between dense and sparse paths.
+2. **WS 5** — medium-impact diagnostic enrichment; users catching
+   the WS3 errors will start asking for these fields once the API
+   sees real adoption.
+3. **WS 6** — naming/typestate cleanup; do before WS3's API freezes
+   in any downstream consumer (cheaper to rename now than later).
+4. **WS 8** — close the last CPU drift surface; future-proofing only.
+5. **WS 9** — academic / boundary cases; only if a user hits one or
+   if it bundles cheaply with another GPU-codegen workstream
+   (vast.ai required for CUDA verification).
 
-Each can ship as an independent PR. Finishing any one doesn't
-block the others.
+Each can ship as an independent PR. Finishing any one doesn't block
+the others.
