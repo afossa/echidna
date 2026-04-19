@@ -172,6 +172,17 @@ pub fn implicit_jacobian<F: Float>(
     for j in 0..n {
         let neg_col: Vec<F> = (0..m).map(|i| F::zero() - f_x[i][j]).collect();
         let col = lu_back_solve(&factors, &neg_col);
+
+        // Same non-finite guard as the other publics. When `F_z` is
+        // finite but one column of `F_x` is not (possible in principle
+        // for tapes where `∂F/∂x` carries NaN without `∂F/∂z` doing so),
+        // the back-solve propagates NaN into this column. Check per
+        // column for early-return; `result` is a local and dropped on
+        // `Err`.
+        if col.iter().any(|v| !v.is_finite()) {
+            return Err(ImplicitError::Singular);
+        }
+
         for i in 0..m {
             result[i][j] = col[i];
         }
@@ -221,7 +232,19 @@ pub fn implicit_tangent<F: Float>(
     let neg_fx_xdot: Vec<F> = fx_xdot.iter().map(|&v| F::zero() - v).collect();
 
     // Solve F_z · z_dot = -(F_x · x_dot)
-    lu_solve(&f_z, &neg_fx_xdot).ok_or(ImplicitError::Singular)
+    let sol = lu_solve(&f_z, &neg_fx_xdot).ok_or(ImplicitError::Singular)?;
+
+    // Guard: when `F_z` is finite but the RHS `-(F_x · x_dot)` contains
+    // non-finite entries (e.g. NaN in `x_dot`, or a tape whose `F_x` went
+    // non-finite without `F_z` doing so), the back-solve propagates the
+    // NaN into the returned vector. Without this check it escapes as
+    // `Ok(vec![NaN, ...])`, violating the contract that `Ok` implies a
+    // finite result.
+    if sol.iter().any(|v| !v.is_finite()) {
+        return Err(ImplicitError::Singular);
+    }
+
+    Ok(sol)
 }
 
 /// Compute the implicit adjoint `(dz*/dx)^T · z_bar` (n-vector).
@@ -264,6 +287,14 @@ pub fn implicit_adjoint<F: Float>(
         for i in 0..m {
             x_bar[j] = x_bar[j] - f_x_t[j][i] * lambda[i];
         }
+    }
+
+    // Same non-finite guard as `implicit_tangent`. A non-finite `z_bar`
+    // makes the transpose-solve RHS non-finite; `lu_back_solve`
+    // propagates NaN through the substitution and without this check it
+    // escapes as `Ok(vec![NaN, ...])`.
+    if x_bar.iter().any(|v| !v.is_finite()) {
+        return Err(ImplicitError::Singular);
     }
 
     Ok(x_bar)

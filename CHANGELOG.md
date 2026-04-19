@@ -94,11 +94,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `implicit_*` entry points and the Newton solver) then returned
   NaN-tainted results under an `Ok` / `Some` label. A NaN / ±Inf
   pivot now short-circuits to `None`, surfaced to `implicit_*`
-  callers as `ImplicitError::Singular`. `implicit_hvp` and
-  `implicit_hessian` additionally check their back-solve output for
-  non-finite entries, catching NaN produced inside the nested-dual
-  forward pass (e.g. at function-domain boundaries) that wouldn't
-  reach `lu_factor`.
+  callers as `ImplicitError::Singular`. All five dense implicit
+  entry points (`implicit_tangent`, `implicit_adjoint`,
+  `implicit_jacobian`, `implicit_hvp`, `implicit_hessian`)
+  additionally check their back-solve output for non-finite entries,
+  catching NaN that reaches the solve RHS without `F_z` itself being
+  non-finite — e.g. a NaN `x_dot` / `z_bar`, a tape where `∂F/∂x`
+  goes non-finite independently of `∂F/∂z`, or a nested-dual forward
+  pass producing non-finite higher-order coefficients at a
+  function-domain boundary.
 
 ### Changed (echidna-optim) — BREAKING
 - `OptimResult` is now `#[non_exhaustive]` so future field additions

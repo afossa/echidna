@@ -155,6 +155,51 @@ fn variant_singular_pins_on_nan_jacobian_input() {
     );
 }
 
+// ── Finite F_z, non-finite RHS — exercises the post-solve guards ──
+//
+// When `F_z` stays finite but the solve RHS goes non-finite (e.g. NaN
+// `x_dot` / `z_bar`), `lu_factor` accepts the matrix and `lu_back_solve`
+// propagates NaN through the substitution. Without the guards added to
+// `implicit_tangent` / `implicit_adjoint` / `implicit_hvp` /
+// `implicit_hessian` these would escape as `Ok(vec![NaN, ...])`.
+#[test]
+fn variant_singular_pins_on_nan_x_dot() {
+    // F(z, x) = z² - x, at z* = 2, x = 4. F_z = [[4]] — finite.
+    let (mut tape, _) = record_multi(
+        |v| {
+            let z = v[0];
+            let x = v[1];
+            vec![z * z - x]
+        },
+        &[2.0_f64, 4.0],
+    );
+    let err = implicit_tangent(&mut tape, &[2.0], &[4.0], &[f64::NAN], 1)
+        .expect_err("NaN x_dot must trip the post-solve non-finite guard");
+    assert!(
+        matches!(err, ImplicitError::Singular),
+        "expected Singular, got {err:?}"
+    );
+}
+
+#[test]
+fn variant_singular_pins_on_nan_z_bar() {
+    // Same tape/point. NaN `z_bar` → NaN adjoint-solve RHS.
+    let (mut tape, _) = record_multi(
+        |v| {
+            let z = v[0];
+            let x = v[1];
+            vec![z * z - x]
+        },
+        &[2.0_f64, 4.0],
+    );
+    let err = implicit_adjoint(&mut tape, &[2.0], &[4.0], &[f64::NAN], 1)
+        .expect_err("NaN z_bar must trip the post-solve non-finite guard");
+    assert!(
+        matches!(err, ImplicitError::Singular),
+        "expected Singular, got {err:?}"
+    );
+}
+
 // ── Display + std::error::Error smoke test ──
 //
 // Iterates over a `vec![]` so a future variant is added to the test by
