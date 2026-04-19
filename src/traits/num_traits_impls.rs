@@ -810,13 +810,7 @@ impl<F: Float + TapeThreadLocal> NumFloat for Reverse<F> {
         // other=x)`, `self` maps to kernel `a` and `other` to kernel `b`.
         // `rev_binary(self, other, ..., d_self, d_other)` matches that order.
         let (d_self, d_other) = kernels::atan2_partials(self.value, other.value);
-        rev_binary(
-            self,
-            other,
-            self.value.atan2(other.value),
-            d_self,
-            d_other,
-        )
+        rev_binary(self, other, self.value.atan2(other.value), d_self, d_other)
     }
 
     fn sinh(self) -> Self {

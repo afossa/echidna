@@ -1438,11 +1438,7 @@ fn write_cuda_jet_inverse_trig(s: &mut String, k: usize) {
             // near a=1; matches kernels::acosh_deriv. Higher-order
             // coefficients are unchanged (mathematically identical between
             // the two forms — see jet_acosh emitter for the full argument).
-            writeln!(
-                s,
-                "    d.v[0] = (a.v[0] - (F)1) * (a.v[0] + (F)1);"
-            )
-            .unwrap();
+            writeln!(s, "    d.v[0] = (a.v[0] - (F)1) * (a.v[0] + (F)1);").unwrap();
             for i in 1..k {
                 writeln!(s, "    d.v[{i}] = asq.v[{i}];").unwrap();
             }
