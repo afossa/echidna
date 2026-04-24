@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-24
+
+**Coordinated release:** `echidna` 0.10.0 and `echidna-optim` 0.13.0.
+`echidna-optim`'s dep on `echidna` updated from `0.9.0` to `0.10.0`.
+
+Minor bump (rather than patch) because `wgpu` 28 → 29 is a transitive
+major for anyone enabling the `gpu-wgpu` feature. No echidna public-API
+types changed; the bump reflects the wgpu API-break that downstream
+`gpu-wgpu` consumers will see in their own `Cargo.lock`.
+
+### Changed (echidna)
+
+- **`wgpu` dependency bumped to 29** (`gpu-wgpu` feature). Backend
+  migration: `PipelineLayoutDescriptor::bind_group_layouts` now takes
+  `&[Option<&BindGroupLayout>]` instead of `&[&BindGroupLayout]`, so
+  each entry is wrapped in `Some(...)` at the five pipeline creation
+  sites in `src/gpu/wgpu_backend.rs`. Additionally, wgpu 29 tightened
+  `Limits::downlevel_defaults()` — `max_storage_buffers_per_shader_stage`
+  dropped to a level that no longer fits our tangent-reverse pipeline's
+  13 storage buffers (5 tape + 8 I/O). The backend now requests the
+  limit explicitly in `DeviceDescriptor` and resolves it against the
+  adapter's actual capability via `using_resolution(adapter.limits())`.
+  Older drivers at the floor keep working; modern drivers get the
+  13-buffer pipeline. No public `WgpuContext` API changes.
+- `src/gpu/mod.rs::compute_chunk_size`: replaced manual guarded
+  division (`if nv_k > 0 { chunk.min(u32::MAX as u64 / nv_k) }`)
+  with `u64::checked_div` for identical behaviour and a cleaner
+  expression.
+
+### Added (infrastructure)
+
+- **TLA+ spec-to-code sync enforcement** (`.github/workflows/specs.yml`,
+  `specs/verify_anchors.sh`, `tests/spec_invariants_*.rs`). Every TLA+
+  invariant in `specs/README.md` now carries a `// SPEC: <InvariantName>`
+  anchor at the Rust line upholding it (21 anchors in `src/checkpoint.rs`,
+  `src/bytecode_tape/optimize.rs`, `src/bytecode_tape/mod.rs`). A new
+  `verify-anchors` CI job parses the cross-reference table and greps
+  sources, failing on any missing anchor. Two new test files
+  (`tests/spec_invariants_checkpoint.rs`,
+  `tests/spec_invariants_tape_optimize.rs`) exercise the specs'
+  properties against the real Rust implementation over deterministic
+  bounded input spaces (gradient equality across checkpointing
+  strategies; `optimize ∘ optimize = optimize`; post-optimise structural
+  assertions gated on `cfg(debug_assertions)`; explicit high-N/low-C
+  online-thinning witness).
+- `README.md` and `CONTRIBUTING.md` document the three gates (source
+  anchors, semantic property tests, TLC model checking) with local
+  run commands for each.
+
+### Changed (infrastructure)
+
+- CI `Lint` job now runs `cargo clippy --all-targets -- -D warnings`
+  on both `echidna` and `echidna-optim`. Previously `--all-targets` was
+  omitted, letting benches and integration-test crates accumulate lint
+  debt (~147 warnings + several hard compile errors) invisibly. The
+  backlog was cleared first (bench `black_box` deprecation, redundant
+  closures, a `num-dual`-gradient API break in `benches/comparison.rs`,
+  scientific-idiom `needless_range_loop` allows, a stale `3.14`
+  literal flagged as approximating PI), then CI was tightened.
+- Dependabot maintenance: `codecov/codecov-action` v5 → v6,
+  `actions/setup-java` v4 → v5, `softprops/action-gh-release` v2 → v3.
+
+### Changed (echidna-optim, 0.13.0)
+
+- `echidna` dep updated from `0.9.0` to `0.10.0` (follows the
+  coordinated release; `echidna-optim`'s public API is unchanged).
+- Test hygiene: `assign_op_pattern` and `field_reassign_with_default`
+  clippy fixes in `tests/sparse_implicit.rs` and
+  `tests/ws4_diagnostics.rs`. No runtime behaviour change.
+
 ## [0.9.0] - 2026-04-19
 
 **Coordinated release:** `echidna` 0.9.0 and `echidna-optim` 0.12.0.

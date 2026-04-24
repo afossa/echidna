@@ -2,22 +2,29 @@
 
 ## Supported Versions
 
-| Crate           | Version   | Supported |
-|-----------------|-----------|-----------|
-| `echidna`       | >= 0.9.0  | Yes       |
-| `echidna-optim` | >= 0.12.0 | Yes       |
-| `echidna`       | < 0.9.0   | No        |
-| `echidna-optim` | < 0.12.0  | No        |
+| Crate           | Version    | Supported |
+|-----------------|------------|-----------|
+| `echidna`       | >= 0.10.0  | Yes       |
+| `echidna-optim` | >= 0.13.0  | Yes       |
+| `echidna`       | < 0.10.0   | No        |
+| `echidna-optim` | < 0.13.0   | No        |
 
 Only the latest release of each crate receives security updates.
-`echidna` 0.9.0 and `echidna-optim` 0.12.0 are a coordinated release
-(`echidna-optim` 0.12.0 depends on `echidna = "0.9.0"`).
+`echidna` 0.10.0 and `echidna-optim` 0.13.0 are a coordinated release
+(`echidna-optim` 0.13.0 depends on `echidna = "0.10.0"`).
+
+0.10.0 is a minor bump over 0.9.0 driven by the `wgpu` 28 → 29
+transitive major; echidna's own public API is unchanged. No new
+numerical correctness issues were introduced in 0.9.0 → 0.10.0.
 
 ### Known issues in unsupported versions
 
-Pre-0.9.0 `echidna` carries the following known numerical correctness
+Pre-0.10.0 `echidna` carries the following known numerical correctness
 bugs — see the CHANGELOG for per-version detail:
 
+- **0.9.0**: no known numerical correctness bugs; unsupported only
+  because it targets wgpu 28, which is no longer maintained upstream
+  and received no patches after `wgpu 29.0.0` (2026-03-18).
 - **0.8.2**: GPU Taylor `HYPOT` higher-order coefficients overflow
   to Inf/NaN at extreme magnitudes (`|a.v[0]| ~ 1e20` in f32); GPU
   Taylor `HYPOT` at function-domain boundaries (`hypot(Inf, finite)`,
