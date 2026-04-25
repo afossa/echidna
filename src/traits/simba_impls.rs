@@ -1,4 +1,4 @@
-//! simba trait implementations for `Dual<F>` and `Reverse<F>`.
+//! simba trait implementations for `Dual<F>`, `DualVec<F, N>` and `Reverse<F>`.
 //!
 //! Enables AD types inside nalgebra matrices and solvers.
 

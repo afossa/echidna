@@ -2,7 +2,7 @@
 
 #![cfg(feature = "simba")]
 
-use approx::assert_relative_eq;
+use approx::{assert_abs_diff_eq, assert_relative_eq, assert_ulps_eq};
 use echidna::{Dual64, DualVec64, Reverse64};
 use nalgebra::{Matrix3, Vector3};
 use num_traits::Float;
@@ -149,6 +149,16 @@ fn dual_vec_matrix_vector_product() {
     }
 }
 
+#[test]
+fn dual_vec_eq() {
+    let a = DualVec64::<3>::new(1.0, [1.0, 0.0, 0.0]);
+    let b = DualVec64::<3>::new(1.0, [0.0, 1.0, 0.0]);
+    // Verify that AbsDiffEq, RelativeEq, and UlpsEq compare only the real part
+    assert_abs_diff_eq!(a, b, epsilon = DualVec64::<3>::epsilon());
+    assert_relative_eq!(a, b, epsilon = DualVec64::<3>::epsilon());
+    assert_ulps_eq!(a, b, max_ulps = 1);
+}
+
 // ── Reverse<f64> in nalgebra ──
 
 #[test]
@@ -235,7 +245,6 @@ fn dual_matrix3_try_inverse() {
 #[test]
 fn dual_vec_matrix3_try_inverse() {
     // A 3×3 matrix of dual vectors
-    // test that matrix times inv(matrix) is the identity with all entries with zero differential part
     let m = Matrix3::new(
         DualVec64::<3>::new(2.0, [1.0, 0.0, 0.0]),
         DualVec64::<3>::new(1.0, [0.0, 0.0, 0.0]),
@@ -247,8 +256,8 @@ fn dual_vec_matrix3_try_inverse() {
         DualVec64::<3>::new(1.0, [0.0, 0.0, 0.0]),
         DualVec64::<3>::new(2.0, [0.0, 0.0, 1.0]),
     );
-    dbg!(println!("{}", m.map(|x| x.re)));
     let inv = m.try_inverse().expect("matrix should be invertible");
+    // Verify that matrix times inv(matrix) is the identity with all entries with zero differential part
     let identity = m * inv;
     for i in 0..3 {
         for j in 0..3 {
@@ -260,6 +269,19 @@ fn dual_vec_matrix3_try_inverse() {
             }
         }
     }
+    // Verify finite-diff agreement.
+    let h = 1e-7;
+    let f = |a: f64| {
+        let m = Matrix3::new(a, 1.0, 0.0, 1.0, 3.0, 1.0, 0.0, 1.0, 2.0);
+        let inv = m.try_inverse().unwrap();
+        inv[(0, 0)] + inv[(1, 1)] + inv[(2, 2)]
+    };
+    let fd = (f(2.0 + h) - f(2.0 - h)) / (2.0 * h);
+    assert_relative_eq!(
+        (inv[(0, 0)] + inv[(1, 1)] + inv[(2, 2)]).eps[0],
+        fd,
+        max_relative = 1e-4
+    );
 }
 
 #[test]
